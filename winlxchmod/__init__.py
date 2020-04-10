@@ -177,7 +177,7 @@ def _win_get_permissions(path):
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
         if ace[2] != 'SYSTEM':
-            print("Ace info:", hex(ace[1]), ace[2], ace[3])
+            print("Ace info:", ace[0], ace[1], ace[2])
 
 
 def _win_append_ace(ace_list, sid, access):
