@@ -1,0 +1,102 @@
+language: python
+stages:
+  - lint
+  - test
+  - deploy
+python:
+  - "3.5"
+  - "3.6"
+  - "3.7"
+
+env:
+  global:
+    - THIS_REPO="${TRAVIS_REPO_SLUG#*/}"
+    - OWNER=YakDriver
+    - RELEASE_VERSION=$(grep -E '^current_version' $TRAVIS_BUILD_DIR/.bumpversion.cfg | sed 's/^.*= //')
+    - PRIOR_VERSION=$(git describe --abbrev=0 --tags)
+
+stage: test
+cache: pip
+before_cache:
+  - rm -f $HOME/.cache/pip/log/debug.log
+install:
+  - pip install -r requirements/pip.txt
+  - pip install -r requirements/test.txt
+  - pip install --editable .
+script:
+  - pytest
+jobs:
+  include:
+    - stage: lint
+      python: 3.6
+      install:
+        - pip install -r requirements/pip.txt
+        - pip install -r requirements/lint.txt
+        - pip install --editable .
+      script:
+        - pylint winlxchmod
+        - pylint tests/*py
+        - flake8
+    - stage: test
+      os: windows
+      language: shell
+      env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
+      before_install:
+        - choco install python --version 3.7.4
+      install:
+        - python -m pip install -r requirements/pip.txt
+        - python -m pip install -r requirements/test.txt
+        - pip install --editable .
+    - stage: deploy
+      python: 3.6
+      env:
+        - JOB="Deploy to PyPI"
+      install: skip
+      script:
+        - |
+          if [ "$TRAVIS_TAG" = "" ]; then
+            ver=$(git show -s --format=%cd --date=format:'%Y%m%d%H%M%S')
+            sed -i -E "s/^(version = )([0-9]+\.[0-9]+\.[0-9]+).*$/\1\2.dev$ver/" setup.cfg
+          fi
+      deploy:
+        - provider: pypi
+          server: https://test.pypi.org/legacy/
+          distributions: sdist bdist_wheel
+          user: __token__
+          password:
+            secure: "P2XDhceBF2AzxzJ7Jwnw7tsXntH7GMAXBLEZz21wu6agIHg37/qaPOiF4FdFqSP+E6TeaatDsyL+rgB1cesd4008VgAxfUu61Zhuqsk/+/I49Iz6MeXF+Q3hNN2pbosHr+Vis6gamnw+4ofM99S+A/v3gx60Uuo+Kgh8AUeHdgGYGCz4eg9MdL6yHBpLmZfosO41XG34E39s5c9GuPZ6xLBOMxdP3bIGUXlEPY9tV92+XPSz8TsYsM/3Xq5kE0ih7mD4jH4eyNQedNGNwEeqBcNkzIBKALxFcB7gHI/CYzR5LKp/iRHlfVOFcJeCa8gfYgpWHuM35w2FXMxNQ2ui09lWTnG5Ujw7JHDU+kKrXNKvcT+apSTfTShINoKZZdhbQxj5z5sezq1Z6nOvcl0D/KBabw55/KUVjP5VuwfimP45z8F1Zire1PvYNQ4G4v9k4ZJiEVjwwiDfPUwGeiUe4tG9R9V97/5uZzTG+87G9T7PUldZZyrM3t4yeMKwsDLnfmMzPajGelJVpnIGe/WFp9y9emI7gFd+eSj/sc9resvGC5v58I18ffSO3s4Lzoh72HJkMo9GKfyil2iZIrt8it/Af1gOWHOh9lZO5E+eam0QhOCHTugSApa6jS/zn+i5XLxs9+4EjLoaO8u9rJRDfJiieLy+3ArYroBYCv+gn1k="
+          skip_cleanup: true
+          skip_upload_docs: true
+          on:
+            branch: master
+        - provider: pypi
+          distributions: sdist bdist_wheel
+          user: __token__
+          password:
+            secure: "OYObFqSvTo3jFXqmC966ByYVGxDWd/5asvqWzmlG89urWUXWMXNwKuBjjsqWSRMrScqo8pcZDPGeN5kvAV8vkhPp75FjnmAZDjmUktS083JPxXfi7xoVA+RAMIMyhCTH0dFj5rakKsnZ3jVjvM4/Bjw9H9ZiR/YyEhQac3kXh67wE+GQmK5hZD5PQktkXFtjvAYq+gmSjzo6oFk21qBrexhx44y+mvKtg4YPxQsZsvqa7mq6dh3afnb/2evM3ZW8gGrOpMFv6Ycdj5fMBDVavBm6ioI2f3TH/kEMKOEGRpvzo2KJy2KcpcdDrmc71lBLdQohl5IR6hSuNxGs0qQm3prJfKM7zjnOxAOibGGqwstIrjyvPLzEeWNnSnhupP5YvkuT5hCMf+/k7YYe+QtF3MTY8C8BHGtE8fX4K9UFdtwb7CgrOQPeRpE6+JomoFGQdF2EnW/QQtfe24oE6XZ69bYKJLlLPlVGi5TX6NnFenjljmDOdj1AqJK07rZr9hxTYKNLghuOKv++UEGuncXjvgpa3iSeP72Q9yE6CmHHoZ/BRnaOQqtNg+56WC4pWlwVa5o3Bf5zRwUAZK0F6ecFo6qLztG2ESs3JSWgmp8YqOn8IxAO4eQJlu2Sx6UAjj1ceIKkrdRyZ/4auwCAkaoYQTgBwS8MiwB2xJzFy1tLaZA="
+          skip_upload_docs: true
+          on:
+            tags: true
+    - stage: deploy
+      if: branch = master AND tag IS blank
+      python: 3.6
+      install: skip
+      script:
+        - export RELEASE_BODY="* [$THIS_REPO v$RELEASE_VERSION CHANGELOG](https://github.com/$OWNER/$THIS_REPO/compare/$PRIOR_VERSION...$RELEASE_VERSION)"
+        - echo RELEASE_BODY=$RELEASE_BODY
+        - env
+        - echo PRIOR_VERSION=$PRIOR_VERSION
+        - echo RELEASE_VERSION=$RELEASE_VERSION
+      deploy:
+        - provider: releases
+          name: $RELEASE_VERSION
+          tag_name: $RELEASE_VERSION
+          target_commitish: $TRAVIS_COMMIT
+          body: $RELEASE_BODY
+          draft: false
+          skip_cleanup: true
+          api_key:
+            secure: "kyYnz7InDJU8azI3iCl57RqqJpNbbe7Z51jp8mFFgG5NU6HSEwQLkwVJMOyJMxn0jVPQ710usJsYGTxpf++UUc9W/38lWqBlEvav8YN9OsrBukD6e1iClRZ5L1mXEGx8g05d+Fop0hhMbzmP6Bd6iSQSuqq4ThRk205Fimqg20VhR1xr17xVXj+0V4JZ4v9tjw6LnbU5yRvf56/MZ2iucQOnVPJz/ut7TyHrbHio4KJnK+eKIUhC541QCAuVglVNmhqYEby73gSXoqFrPOaitDEuQ/OCJSx0+p6ehmSvrZPHDZKE5kbBrm5HndIuUQAblsOMXO/4P+fe33FFeN7W/82Yt2wLfNT+Fgvf5URbj76xVHsaHcGvGsSZGUqYBa0ybd8wBsCTlbltN+BGhOCvdUbneA1nZTqKfj0Nnsw3K+yfe+Ho/nvPXpXlKP7PUuRA1U9SYT22jq6zEepluPAKf6N0V+scS+k3C7AfagKa5+/po1jm5tE47ZIhBvFrgj1RLhnlKmHxYs7GvCKqaE1oUo0rp6p2ZviXvf6oNMP95Gd4zTZt2C5dA20AS99YKEmtbOEuydeBBJNGdICnykzC8VfmYXDLeOmJuFNgEN3OnOF6iw6DawdAHtfbHI3TR7Iy3iTtiQ7mUQnpG8j9NvQo1Vx6FfLfhZVqTYVoV/kUHAA="
+          on:
+            branch: master
+            condition: '"$PRIOR_VERSION" != "$RELEASE_VERSION"'

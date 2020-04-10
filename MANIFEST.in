@@ -1,0 +1,12 @@
+graft winlxchmod
+graft tests
+
+include .bumpversion.cfg
+
+include CHANGELOG.md
+include LICENSE
+include README.md
+
+include .travis.yml .mergify.yml
+
+global-exclude *.py[cod] __pycache__ *.so *.dylib .git
