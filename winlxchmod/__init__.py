@@ -217,9 +217,9 @@ def _win_set_permissions(path, mode):
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
 
-    # get rid of all ACEs
-    for index in range(0, dacl.GetAceCount()):
-        dacl.DeleteAce(index)
+    # get rid of all ACEs except system's
+    for _ in range(0, dacl.GetAceCount()):
+        dacl.DeleteAce(0)
 
     if os.path.isfile(path):
         accesses = WIN_FILE_ACCESS
