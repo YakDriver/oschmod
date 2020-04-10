@@ -2,6 +2,34 @@
 """winlxchmod module.
 
 Module for working with file permissions.
+
+Windows game plan:
+1. Find out owner & group
+2. Go through each ACE
+   - If owner, set owner permissions
+   - If SYSTEM, ignore
+   - If group, set group permissions
+   - If other, set other permissions
+
+Windows Directory:
+  -Flags 0x13
+     OBJECT_INHERIT_ACE
+     CONTAINER_INHERIT_ACE
+  -mask 0x1f01ff
+     DELETE
+     READ_CONTROL
+     WRITE_DAC
+     WRITE_OWNER
+     SYNCHRONIZE
+     FILE_ADD_SUBDIRECTORY
+     FILE_ADD_FILE
+     FILE_DELETE_CHILD
+     FILE_LIST_DIRECTORY
+     FILE_TRAVERSE
+     FILE_READ_ATTRIBUTES
+     FILE_WRITE_ATTRIBUTES
+     FILE_READ_EA
+     FILE_WRITE_EA
 """
 
 import os
@@ -107,6 +135,15 @@ def display_permissions(path):
 
 def windows_get_owner(path):
     """Get the file owner."""
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.OWNER_SECURITY_INFORMATION)
+    sid = sec_descriptor.GetSecurityDescriptorOwner()
+    print("Owner: ", sid, win32security.LookupAccountSid(None, sid))
+
+
+def windows_set_permissions(path):
+    """Set the file permissions."""    
     user_x = "UserX"
     user_y = "UserY"
 
