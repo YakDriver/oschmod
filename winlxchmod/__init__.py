@@ -297,12 +297,13 @@ def _windows_set_permissions(path, mode):
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
-        
+
     num_delete = 0
     for index in range(0, dacl.GetAceCount()):
        ace = dacl.GetAce(index - num_delete)
        if 'SYSTEM' != ace[2]:
            dacl.DeleteAce(index - num_delete)
+           num_delete += 1
     
     if os.path.isfile(path):
         accesses = WIN_FILE_ACCESS
