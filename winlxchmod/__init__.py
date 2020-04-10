@@ -30,6 +30,7 @@ Windows Directory:
      FILE_WRITE_ATTRIBUTES
      FILE_READ_EA
      FILE_WRITE_EA
+
 """
 
 import os
@@ -42,6 +43,118 @@ try:
 except ImportError:
     pass
 
+WIN_FILE_ACCESS = []
+WIN_DIR_ACCESS = []
+if HAS_PYWIN32:
+    WIN_FILE_ACCESS = [
+        0,
+        ntsecuritycon.FILE_GENERIC_EXECUTE,
+        ntsecuritycon.FILE_GENERIC_WRITE,
+        (
+            ntsecuritycon.FILE_GENERIC_WRITE |
+            ntsecuritycon.FILE_GENERIC_EXECUTE
+        ),
+        ntsecuritycon.FILE_GENERIC_READ,
+        (
+            ntsecuritycon.FILE_GENERIC_READ |
+            ntsecuritycon.FILE_GENERIC_EXECUTE
+        ),
+        (
+            ntsecuritycon.FILE_GENERIC_READ |
+            ntsecuritycon.FILE_GENERIC_WRITE
+        ),
+        ntsecuritycon.FILE_ALL_ACCESS
+    ]
+
+    WIN_DIR_ACCESS = [
+        0,
+        (
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.GENERIC_EXECUTE
+        ),
+        (
+            ntsecuritycon.DELETE |
+            ntsecuritycon.WRITE_DAC |
+            ntsecuritycon.WRITE_OWNER |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
+            ntsecuritycon.FILE_ADD_FILE |
+            ntsecuritycon.FILE_DELETE_CHILD |
+            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
+            ntsecuritycon.FILE_WRITE_EA |
+            ntsecuritycon.GENERIC_WRITE
+        ),
+        (
+            ntsecuritycon.DELETE |
+            ntsecuritycon.WRITE_DAC |
+            ntsecuritycon.WRITE_OWNER |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
+            ntsecuritycon.FILE_ADD_FILE |
+            ntsecuritycon.FILE_DELETE_CHILD |
+            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
+            ntsecuritycon.FILE_WRITE_EA |
+            ntsecuritycon.GENERIC_WRITE |
+            ntsecuritycon.GENERIC_EXECUTE
+        ),
+        (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_LIST_DIRECTORY |
+            ntsecuritycon.FILE_TRAVERSE |
+            ntsecuritycon.FILE_READ_ATTRIBUTES |
+            ntsecuritycon.FILE_READ_EA |
+            ntsecuritycon.GENERIC_READ
+        ),
+        (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_LIST_DIRECTORY |
+            ntsecuritycon.FILE_TRAVERSE |
+            ntsecuritycon.FILE_READ_ATTRIBUTES |
+            ntsecuritycon.FILE_READ_EA |
+            ntsecuritycon.GENERIC_READ |
+            ntsecuritycon.GENERIC_EXECUTE
+        ),
+        (
+            ntsecuritycon.DELETE |
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.WRITE_DAC |
+            ntsecuritycon.WRITE_OWNER |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
+            ntsecuritycon.FILE_ADD_FILE |
+            ntsecuritycon.FILE_DELETE_CHILD |
+            ntsecuritycon.FILE_LIST_DIRECTORY |
+            ntsecuritycon.FILE_TRAVERSE |
+            ntsecuritycon.FILE_READ_ATTRIBUTES |
+            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
+            ntsecuritycon.FILE_READ_EA |
+            ntsecuritycon.FILE_WRITE_EA |
+            ntsecuritycon.GENERIC_READ |
+            ntsecuritycon.GENERIC_WRITE
+        ),
+        (
+            ntsecuritycon.DELETE |
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.WRITE_DAC |
+            ntsecuritycon.WRITE_OWNER |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
+            ntsecuritycon.FILE_ADD_FILE |
+            ntsecuritycon.FILE_DELETE_CHILD |
+            ntsecuritycon.FILE_LIST_DIRECTORY |
+            ntsecuritycon.FILE_TRAVERSE |
+            ntsecuritycon.FILE_READ_ATTRIBUTES |
+            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
+            ntsecuritycon.FILE_READ_EA |
+            ntsecuritycon.FILE_WRITE_EA |
+            ntsecuritycon.GENERIC_READ |
+            ntsecuritycon.GENERIC_WRITE |
+            ntsecuritycon.GENERIC_EXECUTE |
+            ntsecuritycon.GENERIC_ALL
+        )
+    ]
 
 __version__ = "0.1.0"
 
@@ -140,10 +253,89 @@ def windows_get_owner(path):
         win32security.OWNER_SECURITY_INFORMATION)
     sid = sec_descriptor.GetSecurityDescriptorOwner()
     print("Owner: ", sid, win32security.LookupAccountSid(None, sid))
+    return sid
 
 
-def windows_set_permissions(path):
-    """Set the file permissions."""    
+def windows_get_group(path):
+    """Get the file group."""
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.GROUP_SECURITY_INFORMATION)
+    sid = sec_descriptor.GetSecurityDescriptorGroup()
+    print("Group: ", win32security.LookupAccountSid(None, sid))
+    return sid
+
+
+def windows_set_permissions(path, mode):
+    """Set the file or dir permissions."""
+    if not os.path.exists(path):
+        raise FileNotFoundError('Path %s could not be found.' % path)
+
+    _windows_set_permissions(path, mode)
+
+
+def _win_append_ace(ace_list, sid, access):
+    trustee = {}
+    trustee['MultipleTrustee'] = None
+    trustee['MultipleTrusteeOperation'] = 0
+    trustee['TrusteeForm'] = win32security.TRUSTEE_IS_SID
+    trustee['TrusteeType'] = win32security.TRUSTEE_IS_USER
+    trustee['Identifier'] = sid
+
+    ace_list.append({
+        'Trustee': trustee,
+        'Inheritance': win32security.NO_INHERITANCE,
+        'AccessMode': win32security.GRANT_ACCESS,
+        'AccessPermissions': access
+    })
+
+
+def _windows_set_permissions(path, mode):
+    """Set the file permissions."""
+    # get rid of all ACEs except system's
+    # num_delete = 0
+    # for index in range(0, dacl.GetAceCount()):
+    #    ace = dacl.GetAce(index - num_delete)
+    #    if 'SYSTEM' != ace[2]:
+    #        dacl.DeleteAce(index - num_delete)
+    if os.path.isfile(path):
+        accesses = WIN_FILE_ACCESS
+    else:
+        accesses = WIN_DIR_ACCESS
+
+    new_aces = []
+
+    # add ACE for owner
+    if mode[0] != '0':
+        _win_append_ace(
+            new_aces, windows_get_owner(path), accesses[int(mode[0])])
+
+    # add ACE for group
+    if mode[1] != '0':
+        _win_append_ace(
+            new_aces, windows_get_group(path), accesses[int(mode[1])])
+
+    # add ACE for others
+    if mode[2] != '0':
+        users_sid = win32security.LookupAccountName('', 'Users')[0]
+        _win_append_ace(
+            new_aces, users_sid, accesses[int(mode[2])])
+
+    # make it real
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    dacl.SetEntriesInAcl(new_aces)
+    win32security.SetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION |
+        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
+        None, None, dacl, None)
+
+
+def windows_set_permissions2(path):
+    """Set the file permissions."""
     user_x = "UserX"
     user_y = "UserY"
 
