@@ -293,11 +293,17 @@ def _win_append_ace(ace_list, sid, access):
 def _windows_set_permissions(path, mode):
     """Set the file permissions."""
     # get rid of all ACEs except system's
-    # num_delete = 0
-    # for index in range(0, dacl.GetAceCount()):
-    #    ace = dacl.GetAce(index - num_delete)
-    #    if 'SYSTEM' != ace[2]:
-    #        dacl.DeleteAce(index - num_delete)
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+        
+    num_delete = 0
+    for index in range(0, dacl.GetAceCount()):
+       ace = dacl.GetAce(index - num_delete)
+       if 'SYSTEM' != ace[2]:
+           dacl.DeleteAce(index - num_delete)
+    
     if os.path.isfile(path):
         accesses = WIN_FILE_ACCESS
     else:
@@ -322,10 +328,6 @@ def _windows_set_permissions(path, mode):
             new_aces, users_sid, accesses[int(mode[2])])
 
     # make it real
-    sec_descriptor = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
     dacl.SetEntriesInAcl(new_aces)
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
