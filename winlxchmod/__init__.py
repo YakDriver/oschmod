@@ -159,6 +159,27 @@ def win_set_permissions(path, mode):
     _win_set_permissions(path, mode)
 
 
+def win_get_permissions(path):
+    """Set the file or dir permissions."""
+    if not os.path.exists(path):
+        raise FileNotFoundError('Path %s could not be found.' % path)
+
+    _win_get_permissions(path)
+
+
+def _win_get_permissions(path):
+    """Get the permissions."""
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+
+    for index in range(0, dacl.GetAceCount()):
+        ace = dacl.GetAce(index)
+        if ace[2] != 'SYSTEM':
+            print("Ace info:", hex(ace[1]), ace[2], ace[3])
+
+
 def _win_append_ace(ace_list, sid, access):
     trustee = {}
     trustee['MultipleTrustee'] = None
@@ -176,7 +197,7 @@ def _win_append_ace(ace_list, sid, access):
 
 
 def _win_set_permissions(path, mode):
-    """Set the file permissions."""
+    """Set the permissions."""
     # get rid of all ACEs except system's
     sec_descriptor = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
