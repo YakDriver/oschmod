@@ -187,7 +187,7 @@ def _win_get_permissions(path):
             owner_idx = WIN_FILE_ACCESS.index(ace[1])
         if ace[2] == group_sid:
             group_idx = WIN_FILE_ACCESS.index(ace[1])
-        if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
+        if ace[2] != owner_sid and ace[2] != group_sid:
             if WIN_FILE_ACCESS.index(ace[1]) > users_idx:
                 users_idx = WIN_FILE_ACCESS.index(ace[1])
 
