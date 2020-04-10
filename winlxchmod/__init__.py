@@ -190,6 +190,7 @@ def _win_get_permissions(path):
         if ace[2] != owner_sid and ace[2] != group_sid:
             if WIN_FILE_ACCESS.index(ace[1]) > users_idx:
                 users_idx = WIN_FILE_ACCESS.index(ace[1])
+        print("Ace:", ace[0], ace[1], ace[2], "Idx:", owner_idx, group_idx, users_idx)
 
     print("Mode: ", owner_idx, group_idx, users_idx)
 
