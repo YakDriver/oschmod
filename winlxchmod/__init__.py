@@ -177,9 +177,9 @@ def _win_get_permissions(path):
     owner_sid = win_get_owner(path)
     group_sid = win_get_group(path)
 
-    owner_idx = "0"
-    group_idx = "0"
-    users_idx = "0"
+    owner_idx = 0
+    group_idx = 0
+    users_idx = 0
 
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
