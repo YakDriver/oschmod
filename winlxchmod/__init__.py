@@ -19,22 +19,22 @@ WIN_DIR_ACCESS = []
 if HAS_PYWIN32:
     WIN_FILE_ACCESS = [
         0,
-        win32security.FILE_GENERIC_EXECUTE,
-        win32security.FILE_GENERIC_WRITE,
+        ntsecuritycon.FILE_GENERIC_EXECUTE,
+        ntsecuritycon.FILE_GENERIC_WRITE,
         (
-            win32security.FILE_GENERIC_WRITE |
-            win32security.FILE_GENERIC_EXECUTE
+            ntsecuritycon.FILE_GENERIC_WRITE |
+            ntsecuritycon.FILE_GENERIC_EXECUTE
         ),
-        win32security.FILE_GENERIC_READ,
+        ntsecuritycon.FILE_GENERIC_READ,
         (
-            win32security.FILE_GENERIC_READ |
-            win32security.FILE_GENERIC_EXECUTE
+            ntsecuritycon.FILE_GENERIC_READ |
+            ntsecuritycon.FILE_GENERIC_EXECUTE
         ),
         (
-            win32security.FILE_GENERIC_READ |
-            win32security.FILE_GENERIC_WRITE
+            ntsecuritycon.FILE_GENERIC_READ |
+            ntsecuritycon.FILE_GENERIC_WRITE
         ),
-        win32security.FILE_ALL_ACCESS
+        ntsecuritycon.FILE_ALL_ACCESS
     ]
 
     WIN_DIR_ACCESS = [
