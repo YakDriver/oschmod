@@ -174,10 +174,24 @@ def _win_get_permissions(path):
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
 
+    owner_sid = win_get_owner(path)
+    group_sid = win_get_group(path)
+
+    owner_idx = "0"
+    group_idx = "0"
+    users_idx = "0"
+
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
-        if ace[2] != 'SYSTEM':
-            print("Ace info:", ace[0], ace[1], ace[2])
+        if ace[2] == owner_sid:
+            owner_idx = WIN_FILE_ACCESS.index(ace[1])
+        if ace[2] == group_sid:
+            group_idx = WIN_FILE_ACCESS.index(ace[1])
+        if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
+            if WIN_FILE_ACCESS.index(ace[1]) > users_idx:
+                users_idx = WIN_FILE_ACCESS.index(ace[1])
+
+    print("Mode: ", owner_idx, group_idx, users_idx)
 
 
 def _win_append_ace(ace_list, sid, access):
