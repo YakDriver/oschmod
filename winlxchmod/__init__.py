@@ -136,7 +136,6 @@ def win_get_owner(path):
         path, win32security.SE_FILE_OBJECT,
         win32security.OWNER_SECURITY_INFORMATION)
     sid = sec_descriptor.GetSecurityDescriptorOwner()
-    print("Owner: ", sid, win32security.LookupAccountSid(None, sid))
     return sid
 
 
@@ -146,7 +145,6 @@ def win_get_group(path):
         path, win32security.SE_FILE_OBJECT,
         win32security.GROUP_SECURITY_INFORMATION)
     sid = sec_descriptor.GetSecurityDescriptorGroup()
-    print("Group: ", win32security.LookupAccountSid(None, sid))
     return sid
 
 
