@@ -314,9 +314,9 @@ def win_display_permissions(path):
                     ntsecuritycon, i):
                 print("    ", i)
 
-        print("  -mask", hex(ace[1]), "(" + ace[1] + ")")
-        print("  -index", WIN_FILE_ACCESS.index(ace[1]))
-        print("  -dir index", WIN_DIR_ACCESS.index(ace[1]))
+        print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
+        print("  -index", str(WIN_FILE_ACCESS.index(ace[1])))
+        print("  -dir index", str(WIN_DIR_ACCESS.index(ace[1])))
 
         # files and directories do permissions differently
         permissions_file = (
