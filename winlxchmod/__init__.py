@@ -212,11 +212,9 @@ def _win_get_permissions(path):
             group_idx = _win_get_idx(ace[1], accesses)
         if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
             temp_idx = _win_get_idx(ace[1], accesses)
+            print("Chcecking users:", ace[2], temp_idx)
             if temp_idx > users_idx:
                 users_idx = temp_idx
-        print(
-            "Ace:", ace[0], ace[1], ace[2], "Idx:", owner_idx, group_idx,
-            users_idx)
 
     print("Mode: ", owner_idx, group_idx, users_idx)
 
@@ -287,6 +285,7 @@ def win_display_permissions(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
 
     print("On file ", path, "\n")
+    print("PERMS:", win_get_permissions(path))
 
     # get owner SID
     print("OWNER")
@@ -331,7 +330,6 @@ def win_display_permissions(path):
                 print("    ", i)
 
         print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
-        print("  -index", win_get_permissions(path))
 
         # files and directories do permissions differently
         permissions_file = (
