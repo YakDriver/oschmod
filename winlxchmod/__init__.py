@@ -158,6 +158,14 @@ def win_get_group(path):
     return sid
 
 
+def _win_get_idx(mask, access_list):
+    """Get the index for the mask in permissions list."""
+    for rindex in range(0, 8):
+        index = 7 - rindex
+        if (mask & access_list[index]) == access_list[index]:
+            return index
+
+
 def win_set_permissions(path, mode):
     """Set the file or dir permissions."""
     if not os.path.exists(path):
@@ -179,6 +187,11 @@ def win_get_permissions(path):
 
 def _win_get_permissions(path):
     """Get the permissions."""
+    if os.path.isfile(path):
+        accesses = WIN_FILE_ACCESS
+    else:
+        accesses = WIN_DIR_ACCESS
+
     sec_descriptor = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
@@ -194,13 +207,16 @@ def _win_get_permissions(path):
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
         if ace[2] == owner_sid:
-            owner_idx = WIN_FILE_ACCESS.index(ace[1])
+            owner_idx = _win_get_idx(ace[1], accesses)
         if ace[2] == group_sid:
-            group_idx = WIN_FILE_ACCESS.index(ace[1])
+            group_idx = _win_get_idx(ace[1], accesses)
         if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
-            if WIN_FILE_ACCESS.index(ace[1]) > users_idx:
-                users_idx = WIN_FILE_ACCESS.index(ace[1])
-        print("Ace:", ace[0], ace[1], ace[2], "Idx:", owner_idx, group_idx, users_idx)
+            temp_idx = _win_get_idx(ace[1], accesses)
+            if temp_idx > users_idx:
+                users_idx = temp_idx
+        print(
+            "Ace:", ace[0], ace[1], ace[2], "Idx:", owner_idx, group_idx,
+            users_idx)
 
     print("Mode: ", owner_idx, group_idx, users_idx)
 
@@ -315,8 +331,7 @@ def win_display_permissions(path):
                 print("    ", i)
 
         print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
-        print("  -index", str(WIN_FILE_ACCESS.index(ace[1])))
-        print("  -dir index", str(WIN_DIR_ACCESS.index(ace[1])))
+        print("  -index", win_get_permissions(path))
 
         # files and directories do permissions differently
         permissions_file = (
