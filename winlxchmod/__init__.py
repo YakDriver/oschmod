@@ -208,11 +208,15 @@ def _win_get_permissions(path):
         ace = dacl.GetAce(index)
         if ace[2] == owner_sid:
             owner_idx = _win_get_idx(ace[1], accesses)
-        if ace[2] == group_sid:
+        elif ace[2] == group_sid:
             group_idx = _win_get_idx(ace[1], accesses)
-        if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
+        elif ace[2] != owner_sid and ace[2] != group_sid \
+                and win32security.LookupAccountSid(
+                    None, ace[2])[0] != 'SYSTEM':
             temp_idx = _win_get_idx(ace[1], accesses)
-            print("Chcecking users:", win32security.LookupAccountSid(None, ace[2]), temp_idx)
+            print(
+                "Chcecking users:",
+                win32security.LookupAccountSid(None, ace[2]), temp_idx)
             if temp_idx > users_idx:
                 users_idx = temp_idx
 
