@@ -22,15 +22,25 @@ if HAS_PYWIN32:
         ntsecuritycon.FILE_GENERIC_EXECUTE,
         ntsecuritycon.FILE_GENERIC_WRITE,
         (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
             ntsecuritycon.FILE_GENERIC_WRITE |
             ntsecuritycon.FILE_GENERIC_EXECUTE
         ),
-        ntsecuritycon.FILE_GENERIC_READ,
         (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
+            ntsecuritycon.FILE_GENERIC_READ
+        ),
+        (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
             ntsecuritycon.FILE_GENERIC_READ |
             ntsecuritycon.FILE_GENERIC_EXECUTE
         ),
         (
+            ntsecuritycon.READ_CONTROL |
+            ntsecuritycon.SYNCHRONIZE |
             ntsecuritycon.FILE_GENERIC_READ |
             ntsecuritycon.FILE_GENERIC_WRITE
         ),
@@ -187,7 +197,7 @@ def _win_get_permissions(path):
             owner_idx = WIN_FILE_ACCESS.index(ace[1])
         if ace[2] == group_sid:
             group_idx = WIN_FILE_ACCESS.index(ace[1])
-        if ace[2] != owner_sid and ace[2] != group_sid:
+        if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
             if WIN_FILE_ACCESS.index(ace[1]) > users_idx:
                 users_idx = WIN_FILE_ACCESS.index(ace[1])
         print("Ace:", ace[0], ace[1], ace[2], "Idx:", owner_idx, group_idx, users_idx)
@@ -304,7 +314,9 @@ def win_display_permissions(path):
                     ntsecuritycon, i):
                 print("    ", i)
 
-        print("  -mask", hex(ace[1]))
+        print("  -mask", hex(ace[1]), "(" + ace[1] + ")")
+        print("  -index", WIN_FILE_ACCESS.index(ace[1]))
+        print("  -dir index", WIN_DIR_ACCESS.index(ace[1]))
 
         # files and directories do permissions differently
         permissions_file = (
