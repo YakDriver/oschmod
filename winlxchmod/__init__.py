@@ -212,7 +212,7 @@ def _win_get_permissions(path):
             group_idx = _win_get_idx(ace[1], accesses)
         if ace[2] != owner_sid and ace[2] != group_sid and ace[2] != 'SYSTEM':
             temp_idx = _win_get_idx(ace[1], accesses)
-            print("Chcecking users:", ace[2], temp_idx)
+            print("Chcecking users:", win32security.LookupAccountSid(None, ace[2]), temp_idx)
             if temp_idx > users_idx:
                 users_idx = temp_idx
 
