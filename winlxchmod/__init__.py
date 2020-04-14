@@ -365,13 +365,8 @@ def _win_set_permissions(path, mode, object_type):
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
 
-    new_aces = []
-
     for index in range(0, dacl.GetAceCount()):
-        ace = dacl.GetAce(index)
-
-        if win32security.LookupAccountSid(None, ace[2])[0] == 'SYSTEM':
-            _win_append_ace(new_aces, ace[2], ace[1])
+        dacl.DeleteAce(0)
 
     sids = [
         win_get_owner_sid(path),
@@ -379,6 +374,7 @@ def _win_set_permissions(path, mode, object_type):
         win_get_other_sid()
     ]
 
+    new_aces = []
     for user_type, sid in enumerate(sids):
         _win_append_ace(new_aces, sid, _win_get_accesses(
             mode, user_type, object_type))
