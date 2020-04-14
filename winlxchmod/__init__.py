@@ -367,9 +367,9 @@ def _win_set_permissions(path, mode, object_type):
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
 
-    for index in range(0, dacl.GetAceCount()):
-        dacl.DeleteAce(index)
-        print("Removing ace", index)
+    for _ in range(0, dacl.GetAceCount()):
+        dacl.DeleteAce(0)
+        print("Removing ace", 0)
 
     sids = [
         win_get_owner_sid(path),
@@ -383,6 +383,7 @@ def _win_set_permissions(path, mode, object_type):
         _win_append_ace(new_aces, sid, _win_get_accesses(
             mode, user_type, object_type))
 
+    # winlxchmod.win_set_permissions('test.txt', stat.S_IRUSR | stat.S_IWUSR)
     # make it real
     dacl.SetEntriesInAcl(new_aces)
     win32security.SetNamedSecurityInfo(
