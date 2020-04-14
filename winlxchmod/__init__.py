@@ -2,6 +2,26 @@
 """winlxchmod module.
 
 Module for working with file permissions.
+
+These bitwise permissions from the stat module can be used with this module:
+    stat.S_IRWXU   # Mask for file owner permissions
+    stat.S_IREAD   # Owner has read permission
+    stat.S_IRUSR   # Owner has read permission
+    stat.S_IWRITE  # Owner has write permission
+    stat.S_IWUSR   # Owner has write permission
+    stat.S_IEXEC   # Owner has execute permission
+    stat.S_IXUSR   # Owner has execute permission
+
+    stat.S_IRWXG   # Mask for group permissions
+    stat.S_IRGRP   # Group has read permission
+    stat.S_IWGRP   # Group has write permission
+    stat.S_IXGRP   # Group has execute permission
+
+    stat.S_IRWXO   # Mask for permissions for others (not in group)
+    stat.S_IROTH   # Others have read permission
+    stat.S_IWOTH   # Others have write permission
+    stat.S_IXOTH   # Others have execute permission
+
 """
 
 import os
@@ -204,28 +224,6 @@ WIN_RWX_PERMS = [
 __version__ = "0.1.0"
 
 
-def figure_out_stat():
-    stat.S_ISUID   # Set UID bit
-    stat.S_ISGID   # Set-group-ID bit
-    stat.S_ENFMT   # System V file locking enforcement
-    stat.S_ISVTX   # File in dir can be renamed or deleted by the owner only
-    stat.S_IREAD   # Owner has read permission
-    stat.S_IWRITE  # Owner has write permission
-    stat.S_IEXEC   # Owner has execute permission
-    stat.S_IRWXU   # Mask for file owner permissions
-    stat.S_IRUSR   # Owner has read permission
-    stat.S_IWUSR   # Owner has write permission
-    stat.S_IXUSR   # Owner has execute permission
-    stat.S_IRWXG   # Mask for group permissions
-    stat.S_IRGRP   # Group has read permission
-    stat.S_IWGRP   # Group has write permission
-    stat.S_IXGRP   # Group has execute permission
-    stat.S_IRWXO   # Mask for permissions for others (not in group)
-    stat.S_IROTH   # Others have read permission
-    stat.S_IWOTH   # Others have write permission
-    stat.S_IXOTH   # Others have execute permission
-
-
 def win_get_owner_sid(path):
     """Get the file owner."""
     sec_descriptor = win32security.GetNamedSecurityInfo(
@@ -250,13 +248,6 @@ def win_get_other_sid():
     allow account to be passed in and find any non-owner, non-group account
     currently associated with the file. As a default, it could use Users."""
     return win32security.LookupAccountName(None, 'Users')[0]
-
-
-def _win_get_idx(mask, access_list):
-    """Get the index for the mask in permissions list."""
-    for index in range(7, -1, -1):
-        if mask & access_list[index] == access_list[index]:
-            return index
 
 
 def win_get_permissions(path):
@@ -320,26 +311,6 @@ def _win_get_permissions(path):
     return perm
 
 
-def _win_append_ace(ace_list, sid, access):
-    """Create ACE and append to list of ACEs."""
-    print("Here at _win_append_ace", sid, access)
-    if access > 0:
-        trustee = {}
-        trustee['MultipleTrustee'] = None
-        trustee['MultipleTrusteeOperation'] = None
-        trustee['TrusteeForm'] = win32security.TRUSTEE_IS_SID
-        trustee['TrusteeType'] = win32security.TRUSTEE_IS_USER
-        trustee['Identifier'] = sid
-
-        ace_list.append({
-            'Trustee': trustee,
-            'Inheritance': 16,
-            'AccessMode': win32security.GRANT_ACCESS,
-            'AccessPermissions': access
-        })
-        print("Just appended", sid, access)
-
-
 def win_set_permissions(path, mode):
     """Set the file or dir permissions."""
     if not os.path.exists(path):
@@ -365,87 +336,41 @@ def _win_get_accesses(mode, user_type, object_type):
 
 def _win_set_permissions(path, mode, object_type):
     """Set the permissions."""
+    # Overview of Windows inheritance:
+    # Get/SetNamedSecurityInfo  = Always includes inheritance
+    # Get/SetFileSecurity       = Can exclude/disable inheritance
+    # Here we read effective permissions with GetNamedSecurityInfo, i.e.,
+    # including inherited permissions. However, we'll set permissions with
+    # SetFileSecurity and NO_INHERITANCE, to disable inheritance.
     sec_des = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_des.GetSecurityDescriptorDacl()
-    print("what does the dacl say? (#1)", dacl.GetAceCount())
 
     for _ in range(0, dacl.GetAceCount()):
-        print("Removing ace", 0)
-        sec_descriptor_i = win32security.GetNamedSecurityInfo(
-            path, win32security.SE_FILE_OBJECT,
-            win32security.DACL_SECURITY_INFORMATION)
-        dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-        print("what does the dacl say? (#XYZ-before)", dacl_i.GetAceCount())
-
         dacl.DeleteAce(0)
-        sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-        win32security.SetFileSecurity(
-            path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
-        sec_descriptor_i = win32security.GetNamedSecurityInfo(
-            path, win32security.SE_FILE_OBJECT,
-            win32security.DACL_SECURITY_INFORMATION)
-        dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-        print("what does the dacl say? (#XYZ-after)", dacl_i.GetAceCount())
+    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+    win32security.SetFileSecurity(
+        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
-    print("what does the dacl say? (#2a)", dacl.GetAceCount())
-    # sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-    # win32security.SetFileSecurity(
-    #     path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)
-    """
-    win32security.SetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION |
-        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
-        None, None, dacl, None)
-    """
-
-    print("what does the dacl say? (#2b)", dacl.GetAceCount())
-
-    sec_descriptor_i = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION)
-    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-    print("what does the dacl_i say? (#2c)", dacl_i.GetAceCount())
-
-    print("what does the dacl say? (#3)", dacl.GetAceCount())
     sids = [
         win_get_owner_sid(path),
         win_get_group_sid(path),
         win_get_other_sid()
     ]
 
-    new_aces = []
     for user_type, sid in enumerate(sids):
-        print("Calling _win_append_ace with", user_type, sid)
-        _win_append_ace(new_aces, sid, _win_get_accesses(
-            mode, user_type, object_type))
+        access = _win_get_accesses(mode, user_type, object_type)
 
-    # winlxchmod.win_set_permissions(path, stat.S_IRUSR | stat.S_IWUSR)
-    # make it real
-    print("what does the dacl say? (#4)", dacl.GetAceCount())
-    sec_descriptor_i = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION)
-    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-    print("what does the dacl_i say? (#5)", dacl_i.GetAceCount())
-    print("number of new aces", len(new_aces), new_aces)
-    dacl.SetEntriesInAcl(new_aces)
-    print("what does the dacl say? (#6)", dacl.GetAceCount())
-    win32security.SetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION |
-        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
-        None, None, dacl, None)
-    print("what does the dacl say? (#7)", dacl.GetAceCount())
+        if access > 0:
+            dacl.AddAccessAllowedAceEx(
+                dacl.GetAclRevision(),
+                win32security.NO_INHERITANCE, access, sid)
 
-    sec_descriptor_i = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION)
-    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-    print("what does the dacl_i say? (#8)", dacl_i.GetAceCount())
+    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+    win32security.SetFileSecurity(
+        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
 
 def win_display_permissions(path):
@@ -539,16 +464,22 @@ def win_display_permissions(path):
         print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
 
 
-def uw_perm():
-    """Unwound."""
+def win_perm_test():
+    """Creates test file and modifies permissions."""
     path = ''.join(
         random.choice(string.ascii_letters) for i in range(10)) + '.txt'
-    fh = open(path, 'w+')
-    fh.write("new file")
-    fh.close()
+    file_hdl = open(path, 'w+')
+    file_hdl.write("new file")
+    file_hdl.close()
+    print("Created test file:", path)
 
+    print("BEFORE Permissions:")
     win_display_permissions(path)
 
+    print("Setting permissions to stat.S_IRUSR | stat.S_IWUSR")
+    win_set_permissions(path, stat.S_IRUSR | stat.S_IWUSR)
+
+    """
     mode = stat.S_IRUSR | stat.S_IWUSR
     object_type = FILE
 
@@ -611,11 +542,6 @@ def uw_perm():
     win32security.SetFileSecurity(
         path, win32security.DACL_SECURITY_INFORMATION, sec_des)
     """
-    win32security.SetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION |
-        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
-        None, None, dacl, None)
-    """
 
+    print("AFTER Permissions:")
     win_display_permissions(path)
