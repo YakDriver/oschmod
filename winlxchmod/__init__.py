@@ -407,6 +407,12 @@ def _win_set_permissions(path, mode, object_type):
         None, None, dacl, None)
     print("what does the dacl say? (#7)", dacl.GetAceCount())
 
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    print("what does the dacl say? (#8)", dacl.GetAceCount())    
+
 
 def win_display_permissions(path):
     """Display permissions."""
