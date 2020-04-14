@@ -560,9 +560,9 @@ def uw_perm():
     for _ in range(0, dacl.GetAceCount()):
         dacl.DeleteAce(0)
 
-    sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
+    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(
-        path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)
+        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
     owner_sid = win_get_owner_sid(path)
     group_sid = win_get_group_sid(path)
