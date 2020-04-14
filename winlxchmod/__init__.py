@@ -5,7 +5,10 @@ Module for working with file permissions.
 """
 
 import os
+import random
 import stat
+import string
+
 
 HAS_PYWIN32 = False
 try:
@@ -378,7 +381,8 @@ def _win_set_permissions(path, mode, object_type):
 
         dacl.DeleteAce(0)
         sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-        win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+        win32security.SetFileSecurity(
+            path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
         sec_descriptor_i = win32security.GetNamedSecurityInfo(
             path, win32security.SE_FILE_OBJECT,
@@ -387,8 +391,9 @@ def _win_set_permissions(path, mode, object_type):
         print("what does the dacl say? (#XYZ-after)", dacl_i.GetAceCount())
 
     print("what does the dacl say? (#2a)", dacl.GetAceCount())
-    #sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-    #win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)
+    # sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
+    # win32security.SetFileSecurity(
+    #     path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)
     """
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
@@ -489,12 +494,13 @@ def win_display_permissions(path):
             print("    ", "NO_INHERITANCE")
         else:
             for i in (
-                "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
-                "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE", "INHERITED_ACE",
-                "SUCCESSFUL_ACCESS_ACE_FLAG", "FAILED_ACCESS_ACE_FLAG"):
-            if ace[0][1] & getattr(win32security, i) == getattr(
-                    win32security, i):
-                print("    ", i)
+                    "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
+                    "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
+                    "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
+                    "FAILED_ACCESS_ACE_FLAG"):
+                if ace[0][1] & getattr(win32security, i) == getattr(
+                        win32security, i):
+                    print("    ", i)
 
         print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
 
@@ -532,11 +538,11 @@ def win_display_permissions(path):
         print("  ", "Calculated Check Mask=", hex(calc_mask))
         print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
 
-import string, random
 
 def uw_perm():
     """Unwound."""
-    path = ''.join(random.choice(string.ascii_letters) for i in range(10)) + '.txt'
+    path = ''.join(
+        random.choice(string.ascii_letters) for i in range(10)) + '.txt'
     fh = open(path, 'w+')
     fh.write("new file")
     fh.close()
@@ -567,7 +573,9 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, owner_sid)
+        dacl.AddAccessAllowedAceEx(
+            dacl.GetAclRevision(),
+            win32security.NO_INHERITANCE, access, owner_sid)
 
     user_type = GROUP
     access = 0
@@ -578,7 +586,9 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, group_sid)
+        dacl.AddAccessAllowedAceEx(
+            dacl.GetAclRevision(),
+            win32security.NO_INHERITANCE, access, group_sid)
 
     user_type = OTHER
     access = 0
@@ -589,9 +599,14 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, other_sid)
+        dacl.AddAccessAllowedAceEx(
+            dacl.GetAclRevision(),
+            win32security.NO_INHERITANCE, access, other_sid)
     else:
-        dacl.AddAccessDeniedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, W_FILRD | W_FILWR | W_FILEX, other_sid)
+        dacl.AddAccessDeniedAceEx(
+            dacl.GetAclRevision(),
+            win32security.NO_INHERITANCE,
+            W_FILRD | W_FILWR | W_FILEX, other_sid)
 
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
