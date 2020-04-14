@@ -322,15 +322,15 @@ def _win_append_ace(ace_list, sid, access):
     print("Here at _win_append_ace", sid, access)
     if access > 0:
         trustee = {}
-        trustee['MultipleTrustee'] = None
-        trustee['MultipleTrusteeOperation'] = 0
+        #trustee['MultipleTrustee'] = None
+        #trustee['MultipleTrusteeOperation'] = 0
         trustee['TrusteeForm'] = win32security.TRUSTEE_IS_SID
         trustee['TrusteeType'] = win32security.TRUSTEE_IS_USER
         trustee['Identifier'] = sid
 
         ace_list.append({
             'Trustee': trustee,
-            'Inheritance': win32security.NO_INHERITANCE,
+            #'Inheritance': win32security.NO_INHERITANCE,
             'AccessMode': win32security.GRANT_ACCESS,
             'AccessPermissions': access
         })
@@ -389,7 +389,7 @@ def _win_set_permissions(path, mode, object_type):
         _win_append_ace(new_aces, sid, _win_get_accesses(
             mode, user_type, object_type))
 
-    # winlxchmod.win_set_permissions('test.txt', stat.S_IRUSR | stat.S_IWUSR)
+    # winlxchmod.win_set_permissions(path, stat.S_IRUSR | stat.S_IWUSR)
     # make it real
     print("what does the dacl say? (#4)", dacl.GetAceCount())
     sec_descriptor = win32security.GetNamedSecurityInfo(
