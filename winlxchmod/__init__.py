@@ -330,7 +330,7 @@ def _win_append_ace(ace_list, sid, access):
 
         ace_list.append({
             'Trustee': trustee,
-            #'Inheritance': win32security.NO_INHERITANCE,
+            'Inheritance': 16,
             'AccessMode': win32security.GRANT_ACCESS,
             'AccessPermissions': access
         })
