@@ -606,11 +606,6 @@ def uw_perm():
         dacl.AddAccessAllowedAceEx(
             dacl.GetAclRevision(),
             win32security.NO_INHERITANCE, access, other_sid)
-    else:
-        dacl.AddAccessDeniedAceEx(
-            dacl.GetAclRevision(),
-            win32security.NO_INHERITANCE,
-            W_FILRD | W_FILWR | W_FILEX, other_sid)
 
     sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(
