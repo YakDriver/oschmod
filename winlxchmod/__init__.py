@@ -319,6 +319,7 @@ def _win_get_permissions(path):
 
 def _win_append_ace(ace_list, sid, access):
     """Create ACE and append to list of ACEs."""
+    print("Here at _win_append_ace", sid, access)
     if access > 0:
         trustee = {}
         trustee['MultipleTrustee'] = None
@@ -333,6 +334,7 @@ def _win_append_ace(ace_list, sid, access):
             'AccessMode': win32security.GRANT_ACCESS,
             'AccessPermissions': access
         })
+        print("Just appended", sid, access)
 
 
 def win_set_permissions(path, mode):
@@ -367,6 +369,7 @@ def _win_set_permissions(path, mode, object_type):
 
     for index in range(0, dacl.GetAceCount()):
         dacl.DeleteAce(index)
+        print("Removing ace", index)
 
     sids = [
         win_get_owner_sid(path),
@@ -376,6 +379,7 @@ def _win_set_permissions(path, mode, object_type):
 
     new_aces = []
     for user_type, sid in enumerate(sids):
+        print("Calling _win_append_ace with", user_type, sid)
         _win_append_ace(new_aces, sid, _win_get_accesses(
             mode, user_type, object_type))
 
