@@ -215,6 +215,18 @@ STAT_MASKS = [
     [stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH]
 ]
 
+STAT_KEYS = (
+    "S_IRUSR",
+    "S_IWUSR",
+    "S_IXUSR",
+    "S_IRGRP",
+    "S_IWGRP",
+    "S_IXGRP",
+    "S_IROTH",
+    "S_IWOTH",
+    "S_IXOTH"
+)
+
 WIN_RWX_PERMS = [
     [W_FILRD, W_FILWR, W_FILEX],
     [W_DIRRD, W_DIRWR, W_DIREX]
@@ -464,7 +476,7 @@ def win_display_permissions(path):
         print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
 
 
-def win_perm_test():
+def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
     """Creates test file and modifies permissions."""
     path = ''.join(
         random.choice(string.ascii_letters) for i in range(10)) + '.txt'
@@ -476,72 +488,11 @@ def win_perm_test():
     print("BEFORE Permissions:")
     win_display_permissions(path)
 
-    print("Setting permissions to stat.S_IRUSR | stat.S_IWUSR")
-    win_set_permissions(path, stat.S_IRUSR | stat.S_IWUSR)
-
-    """
-    mode = stat.S_IRUSR | stat.S_IWUSR
-    object_type = FILE
-
-    sec_des = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_des.GetSecurityDescriptorDacl()
-
-    for _ in range(0, dacl.GetAceCount()):
-        dacl.DeleteAce(0)
-
-    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(
-        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
-
-    owner_sid = win_get_owner_sid(path)
-    group_sid = win_get_group_sid(path)
-    other_sid = win_get_other_sid()
-
-    user_type = OWNER
-    access = 0
-
-    for oper in OPER_TYPES:
-        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
-            access = access | WIN_RWX_PERMS[object_type][oper]
-    print("Access", access)
-
-    if access > 0:
-        dacl.AddAccessAllowedAceEx(
-            dacl.GetAclRevision(),
-            win32security.NO_INHERITANCE, access, owner_sid)
-
-    user_type = GROUP
-    access = 0
-
-    for oper in OPER_TYPES:
-        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
-            access = access | WIN_RWX_PERMS[object_type][oper]
-    print("Access", access)
-
-    if access > 0:
-        dacl.AddAccessAllowedAceEx(
-            dacl.GetAclRevision(),
-            win32security.NO_INHERITANCE, access, group_sid)
-
-    user_type = OTHER
-    access = 0
-
-    for oper in OPER_TYPES:
-        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
-            access = access | WIN_RWX_PERMS[object_type][oper]
-    print("Access", access)
-
-    if access > 0:
-        dacl.AddAccessAllowedAceEx(
-            dacl.GetAclRevision(),
-            win32security.NO_INHERITANCE, access, other_sid)
-
-    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(
-        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
-    """
+    print("Setting permissions:")
+    for i in STAT_KEYS:
+        if mode & getattr(stat, i) == getattr(stat, i):
+            print("    stat.", i)
+    win_set_permissions(path, mode)
 
     print("AFTER Permissions:")
     win_display_permissions(path)
