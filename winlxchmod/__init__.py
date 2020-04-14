@@ -377,8 +377,8 @@ def _win_set_permissions(path, mode, object_type):
         print("what does the dacl say? (#XYZ-before)", dacl_i.GetAceCount())
 
         dacl.DeleteAce(0)
-        sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-        win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)   
+        sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+        win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)   
 
         sec_descriptor_i = win32security.GetNamedSecurityInfo(
             path, win32security.SE_FILE_OBJECT,
