@@ -372,7 +372,7 @@ def _win_set_permissions(path, mode, object_type):
         print("Removing ace", 0)
 
     sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sd)   
+    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)   
 
     sids = [
         win_get_owner_sid(path),
