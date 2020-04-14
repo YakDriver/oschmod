@@ -362,10 +362,10 @@ def _win_get_accesses(mode, user_type, object_type):
 
 def _win_set_permissions(path, mode, object_type):
     """Set the permissions."""
-    sec_descriptor = win32security.GetNamedSecurityInfo(
+    sec_des = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    dacl = sec_des.GetSecurityDescriptorDacl()
     print("what does the dacl say? (#1)", dacl.GetAceCount())
 
     for _ in range(0, dacl.GetAceCount()):
@@ -381,11 +381,13 @@ def _win_set_permissions(path, mode, object_type):
         win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
         None, None, dacl, None)
 
-    sec_descriptor = win32security.GetNamedSecurityInfo(
+    print("what does the dacl say? (#2b)", dacl.GetAceCount())
+
+    sec_descriptor_i = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
-    print("what does the dacl say? (#2b)", dacl.GetAceCount())        
+    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
+    print("what does the dacl_i say? (#2c)", dacl_i.GetAceCount())        
 
     print("what does the dacl say? (#3)", dacl.GetAceCount())
     sids = [
@@ -403,11 +405,11 @@ def _win_set_permissions(path, mode, object_type):
     # winlxchmod.win_set_permissions(path, stat.S_IRUSR | stat.S_IWUSR)
     # make it real
     print("what does the dacl say? (#4)", dacl.GetAceCount())
-    sec_descriptor = win32security.GetNamedSecurityInfo(
+    sec_descriptor_i = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
-    print("what does the dacl say? (#5)", dacl.GetAceCount())
+    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
+    print("what does the dacl_i say? (#5)", dacl_i.GetAceCount())
     print("number of new aces", len(new_aces), new_aces)
     dacl.SetEntriesInAcl(new_aces)
     print("what does the dacl say? (#6)", dacl.GetAceCount())
@@ -418,11 +420,11 @@ def _win_set_permissions(path, mode, object_type):
         None, None, dacl, None)
     print("what does the dacl say? (#7)", dacl.GetAceCount())
 
-    sec_descriptor = win32security.GetNamedSecurityInfo(
+    sec_descriptor_i = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
-    print("what does the dacl say? (#8)", dacl.GetAceCount())    
+    dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
+    print("what does the dacl_i say? (#8)", dacl_i.GetAceCount())    
 
 
 def win_display_permissions(path):
