@@ -566,7 +566,7 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, owner_sid)
+        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, owner_sid)
 
     user_type = GROUP
     access = 0
@@ -577,7 +577,7 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, group_sid)
+        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, group_sid)
 
     user_type = OTHER
     access = 0
@@ -588,7 +588,9 @@ def uw_perm():
     print("Access", access)
 
     if access > 0:
-        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, other_sid)
+        dacl.AddAccessAllowedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, access, other_sid)
+    else:
+        dacl.AddAccessDeniedAceEx(dacl.GetAclRevision(), win32security.NO_INHERITANCE, W_FILRD | W_FILWR | W_FILEX, other_sid)
 
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
