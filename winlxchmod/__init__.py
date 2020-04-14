@@ -209,7 +209,7 @@ EXECUTE = 2
 
 OPER_TYPES = [READ, WRITE, EXECUTE]
 
-STAT_MASKS = [
+STAT_MODES = [
     [stat.S_IRUSR, stat.S_IWUSR, stat.S_IXUSR],
     [stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP],
     [stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH]
@@ -232,6 +232,32 @@ WIN_RWX_PERMS = [
     [W_DIRRD, W_DIRWR, W_DIREX]
 ]
 
+WIN_FILE_PERMISSIONS = (
+    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+    "SYNCHRONIZE", "FILE_GENERIC_READ", "FILE_GENERIC_WRITE",
+    "FILE_GENERIC_EXECUTE", "FILE_DELETE_CHILD")
+
+WIN_DIR_PERMISSIONS = (
+    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+    "SYNCHRONIZE", "FILE_ADD_SUBDIRECTORY", "FILE_ADD_FILE",
+    "FILE_DELETE_CHILD", "FILE_LIST_DIRECTORY", "FILE_TRAVERSE",
+    "FILE_READ_ATTRIBUTES", "FILE_WRITE_ATTRIBUTES", "FILE_READ_EA",
+    "FILE_WRITE_EA")
+
+WIN_DIR_INHERIT_PERMISSIONS = (
+    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+    "SYNCHRONIZE", "GENERIC_READ", "GENERIC_WRITE", "GENERIC_EXECUTE",
+    "GENERIC_ALL")
+
+WIN_ACE_TYPES = (
+    "ACCESS_ALLOWED_ACE_TYPE", "ACCESS_DENIED_ACE_TYPE",
+    "SYSTEM_AUDIT_ACE_TYPE", "SYSTEM_ALARM_ACE_TYPE")
+
+WIN_INHERITANCE_TYPES = (
+    "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
+    "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
+    "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
+    "FAILED_ACCESS_ACE_FLAG")
 
 __version__ = "0.1.0"
 
@@ -262,65 +288,81 @@ def win_get_other_sid():
     return win32security.LookupAccountName(None, 'Users')[0]
 
 
+def convert_win_to_stat(win_perm, user_type, object_type):
+    """Given Win perm and user type, give stat mode."""
+    mode = 0
+
+    for oper in OPER_TYPES:
+        if win_perm & WIN_RWX_PERMS[object_type][oper] == \
+                WIN_RWX_PERMS[object_type][oper]:
+            mode = mode | STAT_MODES[user_type][oper]
+
+    return mode
+
+
+def convert_stat_to_win(mode, user_type, object_type):
+    """Given stat mode, return Win bitwise permissions for user type."""
+    win_perm = 0
+
+    for oper in OPER_TYPES:
+        if mode & STAT_MODES[user_type][oper] == STAT_MODES[user_type][oper]:
+            win_perm = win_perm | WIN_RWX_PERMS[object_type][oper]
+
+    return win_perm
+
+
+def win_get_user_type(sid, sids):
+    """Given object and SIDs, return user type."""
+    if sid == sids[OWNER]:
+        return OWNER
+
+    if sid == sids[GROUP]:
+        return GROUP
+
+    return OTHER
+
+
+def win_get_object_sids(path):
+    """Get the owner, group, other SIDs for an object."""
+    return [
+        win_get_owner_sid(path),
+        win_get_group_sid(path),
+        win_get_other_sid()
+    ]
+
+
 def win_get_permissions(path):
-    """Set the file or dir permissions."""
+    """Get the file or dir permissions."""
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
 
-    _win_get_permissions(path)
+    object_type = DIRECTORY
+    if os.path.isfile(path):
+        object_type = FILE
+
+    return _win_get_permissions(path, object_type)
 
 
-def _win_get_permissions(path):
+def _win_get_permissions(path, object_type):
     """Get the permissions."""
-    # if os.path.isfile(path):
-    #     accesses = WIN_FILE_ACCESS
-    # else:
-    #    accesses = WIN_DIR_ACCESS
-
-    sec_descriptor = win32security.GetNamedSecurityInfo(
+    sec_des = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
-    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    dacl = sec_des.GetSecurityDescriptorDacl()
 
-    owner_sid = win_get_owner_sid(path)
-    group_sid = win_get_group_sid(path)
+    sids = win_get_object_sids(path)
+    mode = 0
 
-    perm = 0
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
-        if ace[2] == owner_sid:
-            if ace[1] & ntsecuritycon.FILE_GENERIC_READ == \
-                    ntsecuritycon.FILE_GENERIC_READ:
-                perm = perm | stat.S_IRUSR
-            if ace[1] & ntsecuritycon.FILE_GENERIC_WRITE == \
-                    ntsecuritycon.FILE_GENERIC_WRITE:
-                perm = perm | stat.S_IWUSR
-            if ace[1] & ntsecuritycon.FILE_GENERIC_EXECUTE == \
-                    ntsecuritycon.FILE_GENERIC_EXECUTE:
-                perm = perm | stat.S_IXUSR
-        elif ace[2] == group_sid:
-            if ace[1] & ntsecuritycon.FILE_GENERIC_READ == \
-                    ntsecuritycon.FILE_GENERIC_READ:
-                perm = perm | stat.S_IRGRP
-            if ace[1] & ntsecuritycon.FILE_GENERIC_WRITE == \
-                    ntsecuritycon.FILE_GENERIC_WRITE:
-                perm = perm | stat.S_IWGRP
-            if ace[1] & ntsecuritycon.FILE_GENERIC_EXECUTE == \
-                    ntsecuritycon.FILE_GENERIC_EXECUTE:
-                perm = perm | stat.S_IXGRP
-        elif win32security.LookupAccountSid(None, ace[2])[0] != 'SYSTEM':
-            if ace[1] & ntsecuritycon.FILE_GENERIC_READ == \
-                    ntsecuritycon.FILE_GENERIC_READ:
-                perm = perm | stat.S_IROTH
-            if ace[1] & ntsecuritycon.FILE_GENERIC_WRITE == \
-                    ntsecuritycon.FILE_GENERIC_WRITE:
-                perm = perm | stat.S_IWOTH
-            if ace[1] & ntsecuritycon.FILE_GENERIC_EXECUTE == \
-                    ntsecuritycon.FILE_GENERIC_EXECUTE:
-                perm = perm | stat.S_IXOTH
+        if ace[0][0] == win32security.ACCESS_ALLOWED_ACE_TYPE:
+            # Not handling win32security.ACCESS_DENIED_ACE_TYPE
+            mode = mode | convert_win_to_stat(
+                ace[1],
+                win_get_user_type(ace[2], sids),
+                object_type)
 
-    print("Mode: ", perm, "hex:", hex(perm))
-    return perm
+    return mode
 
 
 def win_set_permissions(path, mode):
@@ -332,18 +374,7 @@ def win_set_permissions(path, mode):
     if os.path.isfile(path):
         object_type = FILE
 
-    return _win_set_permissions(path, mode, object_type)
-
-
-def _win_get_accesses(mode, user_type, object_type):
-    """Get bitwise permissions for user type."""
-    access = 0
-
-    for oper in OPER_TYPES:
-        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
-            access = access | WIN_RWX_PERMS[object_type][oper]
-
-    return access
+    _win_set_permissions(path, mode, object_type)
 
 
 def _win_set_permissions(path, mode, object_type):
@@ -366,23 +397,30 @@ def _win_set_permissions(path, mode, object_type):
     win32security.SetFileSecurity(
         path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
-    sids = [
-        win_get_owner_sid(path),
-        win_get_group_sid(path),
-        win_get_other_sid()
-    ]
+    sids = win_get_object_sids(path)
 
     for user_type, sid in enumerate(sids):
-        access = _win_get_accesses(mode, user_type, object_type)
+        win_perm = convert_stat_to_win(mode, user_type, object_type)
 
-        if access > 0:
+        if win_perm > 0:
             dacl.AddAccessAllowedAceEx(
                 dacl.GetAclRevision(),
-                win32security.NO_INHERITANCE, access, sid)
+                win32security.NO_INHERITANCE, win_perm, sid)
 
     sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(
         path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+
+
+def win_display_inheritance(flags):
+    """Display inheritance flags."""
+    print("  -Flags", hex(flags))
+    if flags == win32security.NO_INHERITANCE:
+        print("    ", "NO_INHERITANCE")
+    else:
+        for i in WIN_INHERITANCE_TYPES:
+            if flags & getattr(win32security, i) == getattr(win32security, i):
+                print("    ", i)
 
 
 def win_display_permissions(path):
@@ -420,52 +458,26 @@ def win_display_permissions(path):
         print("ACE", ace_no)
 
         print("  -Type")
-        for i in (
-                "ACCESS_ALLOWED_ACE_TYPE", "ACCESS_DENIED_ACE_TYPE",
-                "SYSTEM_AUDIT_ACE_TYPE", "SYSTEM_ALARM_ACE_TYPE"):
+        for i in WIN_ACE_TYPES:
             if getattr(ntsecuritycon, i) == ace[0][0]:
                 print("    ", i)
 
-        print("  -Flags", hex(ace[0][1]))
-        if ace[0][1] == win32security.NO_INHERITANCE:
-            print("    ", "NO_INHERITANCE")
-        else:
-            for i in (
-                    "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
-                    "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
-                    "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
-                    "FAILED_ACCESS_ACE_FLAG"):
-                if ace[0][1] & getattr(win32security, i) == getattr(
-                        win32security, i):
-                    print("    ", i)
+        win_display_inheritance(ace[0][1])
 
         print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
 
         # files and directories do permissions differently
-        permissions_file = (
-            "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-            "SYNCHRONIZE", "FILE_GENERIC_READ", "FILE_GENERIC_WRITE",
-            "FILE_GENERIC_EXECUTE", "FILE_DELETE_CHILD")
-        permissions_dir = (
-            "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-            "SYNCHRONIZE", "FILE_ADD_SUBDIRECTORY", "FILE_ADD_FILE",
-            "FILE_DELETE_CHILD", "FILE_LIST_DIRECTORY", "FILE_TRAVERSE",
-            "FILE_READ_ATTRIBUTES", "FILE_WRITE_ATTRIBUTES", "FILE_READ_EA",
-            "FILE_WRITE_EA")
-        permissions_dir_inherit = (
-            "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-            "SYNCHRONIZE", "GENERIC_READ", "GENERIC_WRITE", "GENERIC_EXECUTE",
-            "GENERIC_ALL")
+
         if os.path.isfile(path):
-            permissions = permissions_file
+            permissions = WIN_FILE_PERMISSIONS
         else:
-            permissions = permissions_dir
+            permissions = WIN_DIR_PERMISSIONS
             # directories have ACE that is inherited by children within them
             if ace[0][1] & ntsecuritycon.OBJECT_INHERIT_ACE == \
                ntsecuritycon.OBJECT_INHERIT_ACE and ace[0][1] & \
                ntsecuritycon.INHERIT_ONLY_ACE == \
                ntsecuritycon.INHERIT_ONLY_ACE:
-                permissions = permissions_dir_inherit
+                permissions = WIN_DIR_INHERIT_PERMISSIONS
 
         calc_mask = 0  # see if we are printing all of the permissions
         for i in permissions:
@@ -474,6 +486,13 @@ def win_display_permissions(path):
                 print("    ", i)
         print("  ", "Calculated Check Mask=", hex(calc_mask))
         print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
+
+
+def print_mode_permissions(mode):
+    """Print component permissions in a stat mode."""
+    for i in STAT_KEYS:
+        if mode & getattr(stat, i) == getattr(stat, i):
+            print("    stat.", i)
 
 
 def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
@@ -489,9 +508,7 @@ def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
     win_display_permissions(path)
 
     print("Setting permissions:")
-    for i in STAT_KEYS:
-        if mode & getattr(stat, i) == getattr(stat, i):
-            print("    stat.", i)
+    print_mode_permissions(mode)
     win_set_permissions(path, mode)
 
     print("AFTER Permissions:")
