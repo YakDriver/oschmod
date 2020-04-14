@@ -388,7 +388,13 @@ def _win_set_permissions(path, mode, object_type):
 
     # winlxchmod.win_set_permissions('test.txt', stat.S_IRUSR | stat.S_IWUSR)
     # make it real
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    print("number of new aces", len(new_aces), new_aces)
     dacl.SetEntriesInAcl(new_aces)
+    print("what does the dacl say?", dacl.GetAceCount())
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION |
