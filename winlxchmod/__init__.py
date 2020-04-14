@@ -366,7 +366,7 @@ def _win_set_permissions(path, mode, object_type):
     dacl = sec_descriptor.GetSecurityDescriptorDacl()
 
     for index in range(0, dacl.GetAceCount()):
-        dacl.DeleteAce(0)
+        dacl.DeleteAce(index)
 
     sids = [
         win_get_owner_sid(path),
