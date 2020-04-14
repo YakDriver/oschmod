@@ -487,7 +487,8 @@ def win_display_permissions(path):
         print("  -Flags", hex(ace[0][1]))
         if ace[0][1] == win32security.NO_INHERITANCE:
             print("    ", "NO_INHERITANCE")
-        else for i in (
+        else:
+            for i in (
                 "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
                 "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE", "INHERITED_ACE",
                 "SUCCESSFUL_ACCESS_ACE_FLAG", "FAILED_ACCESS_ACE_FLAG"):
