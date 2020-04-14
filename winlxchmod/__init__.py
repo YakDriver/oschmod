@@ -612,10 +612,15 @@ def uw_perm():
             win32security.NO_INHERITANCE,
             W_FILRD | W_FILWR | W_FILEX, other_sid)
 
+    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+    win32security.SetFileSecurity(
+        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+    """
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION |
         win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
         None, None, dacl, None)
+    """
 
     win_display_permissions(path)
