@@ -372,9 +372,20 @@ def _win_set_permissions(path, mode, object_type):
         dacl.DeleteAce(0)
         print("Removing ace", 0)
 
-    print("what does the dacl say? (#2)", dacl.GetAceCount())
-    sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)   
+    print("what does the dacl say? (#2a)", dacl.GetAceCount())
+    #sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
+    #win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)   
+    win32security.SetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION |
+        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
+        None, None, dacl, None)
+
+    sec_descriptor = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_descriptor.GetSecurityDescriptorDacl()
+    print("what does the dacl say? (#2b)", dacl.GetAceCount())        
 
     print("what does the dacl say? (#3)", dacl.GetAceCount())
     sids = [
