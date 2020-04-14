@@ -322,8 +322,8 @@ def _win_append_ace(ace_list, sid, access):
     print("Here at _win_append_ace", sid, access)
     if access > 0:
         trustee = {}
-        #trustee['MultipleTrustee'] = None
-        #trustee['MultipleTrusteeOperation'] = 0
+        trustee['MultipleTrustee'] = None
+        trustee['MultipleTrusteeOperation'] = None
         trustee['TrusteeForm'] = win32security.TRUSTEE_IS_SID
         trustee['TrusteeType'] = win32security.TRUSTEE_IS_USER
         trustee['Identifier'] = sid
@@ -378,17 +378,17 @@ def _win_set_permissions(path, mode, object_type):
 
         dacl.DeleteAce(0)
         sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-        win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)   
+        win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
         sec_descriptor_i = win32security.GetNamedSecurityInfo(
             path, win32security.SE_FILE_OBJECT,
             win32security.DACL_SECURITY_INFORMATION)
-        dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()     
-        print("what does the dacl say? (#XYZ-after)", dacl_i.GetAceCount())   
+        dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
+        print("what does the dacl say? (#XYZ-after)", dacl_i.GetAceCount())
 
     print("what does the dacl say? (#2a)", dacl.GetAceCount())
     #sec_descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
-    #win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)   
+    #win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_descriptor)
     """
     win32security.SetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
@@ -403,7 +403,7 @@ def _win_set_permissions(path, mode, object_type):
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
     dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-    print("what does the dacl_i say? (#2c)", dacl_i.GetAceCount())        
+    print("what does the dacl_i say? (#2c)", dacl_i.GetAceCount())
 
     print("what does the dacl say? (#3)", dacl.GetAceCount())
     sids = [
@@ -440,7 +440,7 @@ def _win_set_permissions(path, mode, object_type):
         path, win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION)
     dacl_i = sec_descriptor_i.GetSecurityDescriptorDacl()
-    print("what does the dacl_i say? (#8)", dacl_i.GetAceCount())    
+    print("what does the dacl_i say? (#8)", dacl_i.GetAceCount())
 
 
 def win_display_permissions(path):
@@ -449,22 +449,21 @@ def win_display_permissions(path):
         print(path, "does not exist!")
         raise FileNotFoundError('Path %s could not be found.' % path)
 
-    print("On file ", path, "\n")
-    print("PERMS:", win_get_permissions(path))
+    print("----------------------------------------")
+    print("FILE:", path)
+    print("Perms:", win_get_permissions(path))
 
     # get owner SID
-    print("OWNER")
     sec_descriptor = win32security.GetFileSecurity(
         path, win32security.OWNER_SECURITY_INFORMATION)
     sid = sec_descriptor.GetSecurityDescriptorOwner()
-    print("  ", win32security.LookupAccountSid(None, sid))
+    print("Owner:", win32security.LookupAccountSid(None, sid))
 
     # get group SID
-    print("GROUP")
     sec_descriptor = win32security.GetFileSecurity(
         path, win32security.GROUP_SECURITY_INFORMATION)
     sid = sec_descriptor.GetSecurityDescriptorGroup()
-    print("  ", win32security.LookupAccountSid(None, sid))
+    print("Group:", win32security.LookupAccountSid(None, sid))
 
     # get ACEs
     sec_descriptor = win32security.GetFileSecurity(
@@ -489,9 +488,11 @@ def win_display_permissions(path):
         for i in (
                 "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
                 "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
-                "SUCCESSFUL_ACCESS_ACE_FLAG", "FAILED_ACCESS_ACE_FLAG"):
-            if getattr(ntsecuritycon, i) & ace[0][1] == getattr(
-                    ntsecuritycon, i):
+                "SUCCESSFUL_ACCESS_ACE_FLAG", "FAILED_ACCESS_ACE_FLAG",
+                "INHERITED_ACE", "NO_INHERITANCE", "SUB_CONTAINERS_AND_OBJECTS_INHERIT",
+                "SUB_CONTAINERS_ONLY_INHERIT", "SUB_OBJECTS_ONLY_INHERIT"):
+            if getattr(win32security, i) & ace[0][1] == getattr(
+                    win32security, i):
                 print("    ", i)
 
         print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
@@ -529,3 +530,70 @@ def win_display_permissions(path):
                 print("    ", i)
         print("  ", "Calculated Check Mask=", hex(calc_mask))
         print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
+
+import string, random
+
+def uw_perm():
+    """Unwound."""
+    path = ''.join(random.choice(string.ascii_letters) for i in range(10)) + '.txt'
+    fh = open(path, 'w+')
+    fh.write("new file")
+    fh.close()
+
+    win_display_permissions(path)
+
+    mode = stat.S_IRUSR | stat.S_IWUSR
+    object_type = FILE
+
+    sec_des = win32security.GetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION)
+    dacl = sec_des.GetSecurityDescriptorDacl()
+
+    for _ in range(0, dacl.GetAceCount()):
+        dacl.DeleteAce(0)
+
+    owner_sid = win_get_owner_sid(path)
+    group_sid = win_get_group_sid(path)
+    other_sid = win_get_other_sid()
+
+    user_type = OWNER
+    access = 0
+
+    for oper in OPER_TYPES:
+        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
+            access = access | WIN_RWX_PERMS[object_type][oper]
+    print("Access", access)
+
+    if access > 0:
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, owner_sid)
+
+    user_type = GROUP
+    access = 0
+
+    for oper in OPER_TYPES:
+        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
+            access = access | WIN_RWX_PERMS[object_type][oper]
+    print("Access", access)
+
+    if access > 0:
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, group_sid)
+
+    user_type = OTHER
+    access = 0
+
+    for oper in OPER_TYPES:
+        if mode & STAT_MASKS[user_type][oper] == STAT_MASKS[user_type][oper]:
+            access = access | WIN_RWX_PERMS[object_type][oper]
+    print("Access", access)
+
+    if access > 0:
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, access, other_sid)
+
+    win32security.SetNamedSecurityInfo(
+        path, win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION |
+        win32security.UNPROTECTED_DACL_SECURITY_INFORMATION,
+        None, None, dacl, None)
+
+    win_display_permissions(path)
