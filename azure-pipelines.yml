@@ -26,7 +26,5 @@ steps:
     pip install --editable .
   displayName: 'Install dependencies'
 
-- script: |
-    pip install pytest pytest-azurepipelines
-    pytest
+- script: pytest
   displayName: 'pytest'
