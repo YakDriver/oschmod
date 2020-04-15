@@ -25,11 +25,13 @@ These bitwise permissions from the stat module can be used with this module:
 """
 
 import os
+import platform
 import random
 import stat
 import string
 
 
+IS_WINDOWS = platform.system() == 'Windows'
 HAS_PYWIN32 = False
 try:
     import ntsecuritycon  # noqa: F401
@@ -37,6 +39,9 @@ try:
     HAS_PYWIN32 = True
 except ImportError:
     pass
+
+if IS_WINDOWS and not HAS_PYWIN32:
+    raise ImportError("win32security and ntsecuritycon required on Windows")
 
 if HAS_PYWIN32:
     W_FLDIR = ntsecuritycon.FILE_LIST_DIRECTORY    # =                        1
@@ -138,6 +143,20 @@ STAT_KEYS = (
 )
 
 __version__ = "0.1.0"
+
+
+def get_mode(path):
+    """Get bitwise mode (stat) of object (dir or file)."""
+    if IS_WINDOWS:
+        return win_get_permissions(path)
+    return os.stat(path).st_mode & (stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
+
+def set_mode(path, mode):
+    """Get bitwise mode (stat) of object (dir or file)."""
+    if IS_WINDOWS:
+        return win_set_permissions(path, mode)
+    return os.chmod(path, mode)
 
 
 def get_object_type(path):
@@ -307,7 +326,7 @@ def print_mode_permissions(mode):
     print("  -Mode:", mode, "(", hex(mode), ")")
     for i in STAT_KEYS:
         if mode & getattr(stat, i) == getattr(stat, i):
-            print("    stat.", i)
+            print("    stat." + i)
 
 
 def print_win_ace_type(ace_type):
