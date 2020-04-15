@@ -37,16 +37,6 @@ jobs:
         - pylint oschmod
         - pylint tests/*py
         - flake8
-    - stage: test
-      os: windows
-      language: shell
-      env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
-      before_install:
-        - choco install python --version 3.7.4
-      install:
-        - python -m pip install -r requirements/pip.txt
-        - python -m pip install -r requirements/test.txt
-        - pip install --editable .
     - stage: deploy
       python: 3.6
       env:
