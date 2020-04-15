@@ -38,159 +38,69 @@ try:
 except ImportError:
     pass
 
-WIN_FILE_ACCESS = []
-WIN_DIR_ACCESS = []
 if HAS_PYWIN32:
-    WIN_FILE_ACCESS = [
-        0,
-        ntsecuritycon.FILE_GENERIC_EXECUTE,
-        ntsecuritycon.FILE_GENERIC_WRITE,
-        (
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_GENERIC_WRITE |
-            ntsecuritycon.FILE_GENERIC_EXECUTE
-        ),
-        (
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_GENERIC_READ
-        ),
-        (
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_GENERIC_READ |
-            ntsecuritycon.FILE_GENERIC_EXECUTE
-        ),
-        (
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_GENERIC_READ |
-            ntsecuritycon.FILE_GENERIC_WRITE
-        ),
-        ntsecuritycon.FILE_ALL_ACCESS
+    W_FLDIR = ntsecuritycon.FILE_LIST_DIRECTORY    # =                        1
+    W_FADFL = ntsecuritycon.FILE_ADD_FILE          # =                       10
+    W_FADSD = ntsecuritycon.FILE_ADD_SUBDIRECTORY  # =                      100
+    W_FRDEA = ntsecuritycon.FILE_READ_EA           # =                     1000
+    W_FWREA = ntsecuritycon.FILE_WRITE_EA          # =                    10000
+    W_FTRAV = ntsecuritycon.FILE_TRAVERSE          # =                   100000
+    W_FDLCH = ntsecuritycon.FILE_DELETE_CHILD      # =                  1000000
+    W_FRDAT = ntsecuritycon.FILE_READ_ATTRIBUTES   # =                 10000000
+    W_FWRAT = ntsecuritycon.FILE_WRITE_ATTRIBUTES  # =                100000000
+    W_DELET = ntsecuritycon.DELETE                 # =        10000000000000000
+    W_RDCON = ntsecuritycon.READ_CONTROL           # =       100000000000000000
+    W_WRDAC = ntsecuritycon.WRITE_DAC              # =      1000000000000000000
+    W_WROWN = ntsecuritycon.WRITE_OWNER            # =     10000000000000000000
+    W_SYNCH = ntsecuritycon.SYNCHRONIZE            # =    100000000000000000000
+    W_FGNEX = ntsecuritycon.FILE_GENERIC_EXECUTE   # =    100100000000010100000
+    W_FGNRD = ntsecuritycon.FILE_GENERIC_READ      # =    100100000000010001001
+    W_FGNWR = ntsecuritycon.FILE_GENERIC_WRITE     # =    100100000000100010110
+    W_GENAL = ntsecuritycon.GENERIC_ALL         # 10000000000000000000000000000
+    W_GENEX = ntsecuritycon.GENERIC_EXECUTE    # 100000000000000000000000000000
+    W_GENWR = ntsecuritycon.GENERIC_WRITE     # 1000000000000000000000000000000
+    W_GENRD = ntsecuritycon.GENERIC_READ    # -10000000000000000000000000000000
+
+    W_DIRRD = W_FLDIR | W_FRDEA | W_FRDAT | W_RDCON | W_SYNCH
+    W_DIRWR = W_FADFL | W_FADSD | W_FWREA | W_FDLCH | W_FWRAT | W_DELET | \
+        W_RDCON | W_WRDAC | W_WROWN | W_SYNCH
+    W_DIREX = W_FTRAV | W_RDCON | W_SYNCH
+
+    W_FILRD = W_FGNRD
+    W_FILWR = W_FDLCH | W_DELET | W_WRDAC | W_WROWN | W_FGNWR
+    W_FILEX = W_FGNEX
+
+    WIN_RWX_PERMS = [
+        [W_FILRD, W_FILWR, W_FILEX],
+        [W_DIRRD, W_DIRWR, W_DIREX]
     ]
 
-    WIN_DIR_ACCESS = [
-        0,
-        (
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.GENERIC_EXECUTE
-        ),
-        (
-            ntsecuritycon.DELETE |
-            ntsecuritycon.WRITE_DAC |
-            ntsecuritycon.WRITE_OWNER |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
-            ntsecuritycon.FILE_ADD_FILE |
-            ntsecuritycon.FILE_DELETE_CHILD |
-            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
-            ntsecuritycon.FILE_WRITE_EA |
-            ntsecuritycon.GENERIC_WRITE
-        ),
-        (
-            ntsecuritycon.DELETE |
-            ntsecuritycon.WRITE_DAC |
-            ntsecuritycon.WRITE_OWNER |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
-            ntsecuritycon.FILE_ADD_FILE |
-            ntsecuritycon.FILE_DELETE_CHILD |
-            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
-            ntsecuritycon.FILE_WRITE_EA |
-            ntsecuritycon.GENERIC_WRITE |
-            ntsecuritycon.GENERIC_EXECUTE
-        ),
-        (
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_LIST_DIRECTORY |
-            ntsecuritycon.FILE_TRAVERSE |
-            ntsecuritycon.FILE_READ_ATTRIBUTES |
-            ntsecuritycon.FILE_READ_EA |
-            ntsecuritycon.GENERIC_READ
-        ),
-        (
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_LIST_DIRECTORY |
-            ntsecuritycon.FILE_TRAVERSE |
-            ntsecuritycon.FILE_READ_ATTRIBUTES |
-            ntsecuritycon.FILE_READ_EA |
-            ntsecuritycon.GENERIC_READ |
-            ntsecuritycon.GENERIC_EXECUTE
-        ),
-        (
-            ntsecuritycon.DELETE |
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.WRITE_DAC |
-            ntsecuritycon.WRITE_OWNER |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
-            ntsecuritycon.FILE_ADD_FILE |
-            ntsecuritycon.FILE_DELETE_CHILD |
-            ntsecuritycon.FILE_LIST_DIRECTORY |
-            ntsecuritycon.FILE_TRAVERSE |
-            ntsecuritycon.FILE_READ_ATTRIBUTES |
-            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
-            ntsecuritycon.FILE_READ_EA |
-            ntsecuritycon.FILE_WRITE_EA |
-            ntsecuritycon.GENERIC_READ |
-            ntsecuritycon.GENERIC_WRITE
-        ),
-        (
-            ntsecuritycon.DELETE |
-            ntsecuritycon.READ_CONTROL |
-            ntsecuritycon.WRITE_DAC |
-            ntsecuritycon.WRITE_OWNER |
-            ntsecuritycon.SYNCHRONIZE |
-            ntsecuritycon.FILE_ADD_SUBDIRECTORY |
-            ntsecuritycon.FILE_ADD_FILE |
-            ntsecuritycon.FILE_DELETE_CHILD |
-            ntsecuritycon.FILE_LIST_DIRECTORY |
-            ntsecuritycon.FILE_TRAVERSE |
-            ntsecuritycon.FILE_READ_ATTRIBUTES |
-            ntsecuritycon.FILE_WRITE_ATTRIBUTES |
-            ntsecuritycon.FILE_READ_EA |
-            ntsecuritycon.FILE_WRITE_EA |
-            ntsecuritycon.GENERIC_READ |
-            ntsecuritycon.GENERIC_WRITE |
-            ntsecuritycon.GENERIC_EXECUTE |
-            ntsecuritycon.GENERIC_ALL
-        )
-    ]
+    WIN_FILE_PERMISSIONS = (
+        "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+        "SYNCHRONIZE", "FILE_GENERIC_READ", "FILE_GENERIC_WRITE",
+        "FILE_GENERIC_EXECUTE", "FILE_DELETE_CHILD")
 
+    WIN_DIR_PERMISSIONS = (
+        "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+        "SYNCHRONIZE", "FILE_ADD_SUBDIRECTORY", "FILE_ADD_FILE",
+        "FILE_DELETE_CHILD", "FILE_LIST_DIRECTORY", "FILE_TRAVERSE",
+        "FILE_READ_ATTRIBUTES", "FILE_WRITE_ATTRIBUTES", "FILE_READ_EA",
+        "FILE_WRITE_EA")
 
-W_FLDIR = ntsecuritycon.FILE_LIST_DIRECTORY    # =                           1
-W_FADFL = ntsecuritycon.FILE_ADD_FILE          # =                          10
-W_FADSD = ntsecuritycon.FILE_ADD_SUBDIRECTORY  # =                         100
-W_FRDEA = ntsecuritycon.FILE_READ_EA           # =                        1000
-W_FWREA = ntsecuritycon.FILE_WRITE_EA          # =                       10000
-W_FTRAV = ntsecuritycon.FILE_TRAVERSE          # =                      100000
-W_FDLCH = ntsecuritycon.FILE_DELETE_CHILD      # =                     1000000
-W_FRDAT = ntsecuritycon.FILE_READ_ATTRIBUTES   # =                    10000000
-W_FWRAT = ntsecuritycon.FILE_WRITE_ATTRIBUTES  # =                   100000000
-W_DELET = ntsecuritycon.DELETE                 # =           10000000000000000
-W_RDCON = ntsecuritycon.READ_CONTROL           # =          100000000000000000
-W_WRDAC = ntsecuritycon.WRITE_DAC              # =         1000000000000000000
-W_WROWN = ntsecuritycon.WRITE_OWNER            # =        10000000000000000000
-W_SYNCH = ntsecuritycon.SYNCHRONIZE            # =       100000000000000000000
-W_FGNEX = ntsecuritycon.FILE_GENERIC_EXECUTE   # =       100100000000010100000
-W_FGNRD = ntsecuritycon.FILE_GENERIC_READ      # =       100100000000010001001
-W_FGNWR = ntsecuritycon.FILE_GENERIC_WRITE     # =       100100000000100010110
-W_GENAL = ntsecuritycon.GENERIC_ALL            # 10000000000000000000000000000
-W_GENEX = ntsecuritycon.GENERIC_EXECUTE       # 100000000000000000000000000000
-W_GENWR = ntsecuritycon.GENERIC_WRITE        # 1000000000000000000000000000000
-W_GENRD = ntsecuritycon.GENERIC_READ       # -10000000000000000000000000000000
+    WIN_DIR_INHERIT_PERMISSIONS = (
+        "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
+        "SYNCHRONIZE", "GENERIC_READ", "GENERIC_WRITE", "GENERIC_EXECUTE",
+        "GENERIC_ALL")
 
-W_DIRRD = W_FLDIR | W_FRDEA | W_FRDAT | W_RDCON | W_SYNCH
-W_DIRWR = W_FADFL | W_FADSD | W_FWREA | W_FDLCH | W_FWRAT | W_DELET | W_RDCON \
-    | W_WRDAC | W_WROWN | W_SYNCH
-W_DIREX = W_FTRAV | W_RDCON | W_SYNCH
+    WIN_ACE_TYPES = (
+        "ACCESS_ALLOWED_ACE_TYPE", "ACCESS_DENIED_ACE_TYPE",
+        "SYSTEM_AUDIT_ACE_TYPE", "SYSTEM_ALARM_ACE_TYPE")
 
-W_FILRD = W_FGNRD
-W_FILWR = W_FDLCH | W_DELET | W_WRDAC | W_WROWN | W_FGNWR
-W_FILEX = W_FGNEX
+    WIN_INHERITANCE_TYPES = (
+        "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
+        "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
+        "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
+        "FAILED_ACCESS_ACE_FLAG")
 
 FILE = 0
 DIRECTORY = 1
@@ -226,38 +136,6 @@ STAT_KEYS = (
     "S_IWOTH",
     "S_IXOTH"
 )
-
-WIN_RWX_PERMS = [
-    [W_FILRD, W_FILWR, W_FILEX],
-    [W_DIRRD, W_DIRWR, W_DIREX]
-]
-
-WIN_FILE_PERMISSIONS = (
-    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-    "SYNCHRONIZE", "FILE_GENERIC_READ", "FILE_GENERIC_WRITE",
-    "FILE_GENERIC_EXECUTE", "FILE_DELETE_CHILD")
-
-WIN_DIR_PERMISSIONS = (
-    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-    "SYNCHRONIZE", "FILE_ADD_SUBDIRECTORY", "FILE_ADD_FILE",
-    "FILE_DELETE_CHILD", "FILE_LIST_DIRECTORY", "FILE_TRAVERSE",
-    "FILE_READ_ATTRIBUTES", "FILE_WRITE_ATTRIBUTES", "FILE_READ_EA",
-    "FILE_WRITE_EA")
-
-WIN_DIR_INHERIT_PERMISSIONS = (
-    "DELETE", "READ_CONTROL", "WRITE_DAC", "WRITE_OWNER",
-    "SYNCHRONIZE", "GENERIC_READ", "GENERIC_WRITE", "GENERIC_EXECUTE",
-    "GENERIC_ALL")
-
-WIN_ACE_TYPES = (
-    "ACCESS_ALLOWED_ACE_TYPE", "ACCESS_DENIED_ACE_TYPE",
-    "SYSTEM_AUDIT_ACE_TYPE", "SYSTEM_ALARM_ACE_TYPE")
-
-WIN_INHERITANCE_TYPES = (
-    "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
-    "NO_PROPAGATE_INHERIT_ACE", "INHERIT_ONLY_ACE",
-    "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
-    "FAILED_ACCESS_ACE_FLAG")
 
 __version__ = "0.1.0"
 
@@ -462,7 +340,7 @@ def print_win_permissions(win_perm, flags, object_type):
                 ntsecuritycon, i):
             calc_mask = calc_mask | getattr(ntsecuritycon, i)
             print("    ", i)
-    print("  ", "Calculated Check Mask:", hex(calc_mask))
+    print("  -Mask calculated from printed permissions:", hex(calc_mask))
 
 
 def print_win_obj_info(path):
