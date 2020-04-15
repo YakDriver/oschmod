@@ -374,6 +374,8 @@ def print_win_obj_info(path):
         ace = dacl.GetAce(ace_no)
         print("ACE", ace_no)
 
+        print('  -SID:', win32security.LookupAccountSid(None, ace[2]))
+
         print_win_ace_type(ace[0][0])
         print_win_inheritance(ace[0][1])
         print_win_permissions(ace[1], ace[0][1], object_type)
