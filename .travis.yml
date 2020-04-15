@@ -54,7 +54,7 @@ jobs:
           distributions: sdist bdist_wheel
           user: __token__
           password:
-            secure: "P2XDhceBF2AzxzJ7Jwnw7tsXntH7GMAXBLEZz21wu6agIHg37/qaPOiF4FdFqSP+E6TeaatDsyL+rgB1cesd4008VgAxfUu61Zhuqsk/+/I49Iz6MeXF+Q3hNN2pbosHr+Vis6gamnw+4ofM99S+A/v3gx60Uuo+Kgh8AUeHdgGYGCz4eg9MdL6yHBpLmZfosO41XG34E39s5c9GuPZ6xLBOMxdP3bIGUXlEPY9tV92+XPSz8TsYsM/3Xq5kE0ih7mD4jH4eyNQedNGNwEeqBcNkzIBKALxFcB7gHI/CYzR5LKp/iRHlfVOFcJeCa8gfYgpWHuM35w2FXMxNQ2ui09lWTnG5Ujw7JHDU+kKrXNKvcT+apSTfTShINoKZZdhbQxj5z5sezq1Z6nOvcl0D/KBabw55/KUVjP5VuwfimP45z8F1Zire1PvYNQ4G4v9k4ZJiEVjwwiDfPUwGeiUe4tG9R9V97/5uZzTG+87G9T7PUldZZyrM3t4yeMKwsDLnfmMzPajGelJVpnIGe/WFp9y9emI7gFd+eSj/sc9resvGC5v58I18ffSO3s4Lzoh72HJkMo9GKfyil2iZIrt8it/Af1gOWHOh9lZO5E+eam0QhOCHTugSApa6jS/zn+i5XLxs9+4EjLoaO8u9rJRDfJiieLy+3ArYroBYCv+gn1k="
+            secure: "A4ojOGRNri2bIpUlb6eVzZ/+okliLCSvzNCldINewd8CrsWK41iEhFsoM2dhY3cgdh2AGwZkFTdkrHrU37MS+etszpYZ+T2opc9UXQlSHkMWhDtMfUOIV8VTopGX1oHntqS5htUEO6aF7OeG7g72kkU29hPUFVM0XqEMOxxL2t8v7Ce6I55i4la9RFsmOpvnf9mExA9CLrrPNOECZQT7TPe28fGplrZ3OK7U+KBEyFDt0F9eZuzJgdPtaMGpJGXAtsW2gkA86wVF9t2hl95Z+IT5gCttBFDfBSYKO728Ht/43g8EGyktm3X6bQT4fkoKpBPubpYlbjRvsF3vxptBB4EGzKGh5OXJ8oY5QlU4AqSWeZeNxehxWtnGTDbdx3g9jmR1tzxPndoBvupTLw366BvQZQ0Ox/UGad0dHKiRHabwA5nZfZ8C9MYtzHpyenfOzEAtE2XQnhuImZD5h42CdDER0vIea1PvPFiE/PmvO/5s6Yf/sMY8AT+hCz98acUQ5yd2Iw3pCfdyhuwp9b/WAXd1l2nKyJstb57ZU1vUcONhNoNPNb9qZPygBWqZk6bTtORV7aLIDvMKM9Vbay0DPmx5ctAhCogJj8X+TJF0q100AEZiRsZBkbrW/YqTf1OD7XjmTxtQY63/BHFVP3XrDfDZwCE3HwkOSO6ccTikBlc="
           skip_cleanup: true
           skip_upload_docs: true
           on:
@@ -63,7 +63,7 @@ jobs:
           distributions: sdist bdist_wheel
           user: __token__
           password:
-            secure: "OYObFqSvTo3jFXqmC966ByYVGxDWd/5asvqWzmlG89urWUXWMXNwKuBjjsqWSRMrScqo8pcZDPGeN5kvAV8vkhPp75FjnmAZDjmUktS083JPxXfi7xoVA+RAMIMyhCTH0dFj5rakKsnZ3jVjvM4/Bjw9H9ZiR/YyEhQac3kXh67wE+GQmK5hZD5PQktkXFtjvAYq+gmSjzo6oFk21qBrexhx44y+mvKtg4YPxQsZsvqa7mq6dh3afnb/2evM3ZW8gGrOpMFv6Ycdj5fMBDVavBm6ioI2f3TH/kEMKOEGRpvzo2KJy2KcpcdDrmc71lBLdQohl5IR6hSuNxGs0qQm3prJfKM7zjnOxAOibGGqwstIrjyvPLzEeWNnSnhupP5YvkuT5hCMf+/k7YYe+QtF3MTY8C8BHGtE8fX4K9UFdtwb7CgrOQPeRpE6+JomoFGQdF2EnW/QQtfe24oE6XZ69bYKJLlLPlVGi5TX6NnFenjljmDOdj1AqJK07rZr9hxTYKNLghuOKv++UEGuncXjvgpa3iSeP72Q9yE6CmHHoZ/BRnaOQqtNg+56WC4pWlwVa5o3Bf5zRwUAZK0F6ecFo6qLztG2ESs3JSWgmp8YqOn8IxAO4eQJlu2Sx6UAjj1ceIKkrdRyZ/4auwCAkaoYQTgBwS8MiwB2xJzFy1tLaZA="
+            secure: "qIiNdoXA5mIE15IY9eM/ofVACUETgDeI5QysmmBVFd+xWW4jaJHwoOjsPg4Z9yu+gSHpX6Cwyd30eLiK0sOT6lUu7AJCfK1uAteDZWMsGLe0izzlBVWo0dRDavoVPwBM1Bh3XFrc4iwG3u783tmgOOChbht4NTvFyjlylscgB89RCaiFLSp9Ax1ZNqAEJyNtjFrsdRrjUSzof2JxGWXUGwTQkBYRTb9ZzU0cBRspw+OhxbruK52Htr6ncanUzXWYT1ocTVaiAtnkC1Pl6IGZWzQ0r7nASZH046K/O+eu1edffPDQEN8roWnh8UfrAtiRNskrc14pbD9mOZGHYwwLdMALXIGkhxJMlnMEJ1ohakmm8GLQMAejnPrt/lBbAbTBw41MLKPiDV3YWs2mAFwbtCCqB6mseZvF7SNJfUOjfKWMIWDo/RzPHDWB4WBSqbroFJghyjbYsXSgMw4C9KKSNW9UPzKlZFLXasgJbVUMyUIwe8Z9UFZN+MGNZIsi/AX9mtVNd2bol8gHEZ+d+LYc473+Ln6be4uD6BXeQx4VlkvLYWGx+qvkUdw8nMZ2sOmP5h0urzN6Zet9M7B9gcVsiYzu/erzHX/xT+IQmwdvsjdI/wJ/ZV4TbhHnCr0z1BrQzZDXmIvjxuSm1FmQbVpqhznx3WFuIXajd9eg6qyUnQ4="
           skip_upload_docs: true
           on:
             tags: true
