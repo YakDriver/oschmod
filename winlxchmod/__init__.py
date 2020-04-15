@@ -262,6 +262,15 @@ WIN_INHERITANCE_TYPES = (
 __version__ = "0.1.0"
 
 
+def get_object_type(path):
+    """Get whether object is file or directory."""
+    object_type = DIRECTORY
+    if os.path.isfile(path):
+        object_type = FILE
+
+    return object_type
+
+
 def win_get_owner_sid(path):
     """Get the file owner."""
     sec_descriptor = win32security.GetNamedSecurityInfo(
@@ -336,11 +345,7 @@ def win_get_permissions(path):
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
 
-    object_type = DIRECTORY
-    if os.path.isfile(path):
-        object_type = FILE
-
-    return _win_get_permissions(path, object_type)
+    return _win_get_permissions(path, get_object_type(path))
 
 
 def _win_get_permissions(path, object_type):
@@ -370,11 +375,7 @@ def win_set_permissions(path, mode):
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
 
-    object_type = DIRECTORY
-    if os.path.isfile(path):
-        object_type = FILE
-
-    _win_set_permissions(path, mode, object_type)
+    _win_set_permissions(path, mode, get_object_type(path))
 
 
 def _win_set_permissions(path, mode, object_type):
@@ -412,9 +413,9 @@ def _win_set_permissions(path, mode, object_type):
         path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
 
-def win_display_inheritance(flags):
+def print_win_inheritance(flags):
     """Display inheritance flags."""
-    print("  -Flags", hex(flags))
+    print("  -Flags:", hex(flags))
     if flags == win32security.NO_INHERITANCE:
         print("    ", "NO_INHERITANCE")
     else:
@@ -423,27 +424,65 @@ def win_display_inheritance(flags):
                 print("    ", i)
 
 
-def win_display_permissions(path):
-    """Display permissions."""
+def print_mode_permissions(mode):
+    """Print component permissions in a stat mode."""
+    print("  -Mode:", mode, "(", hex(mode), ")")
+    for i in STAT_KEYS:
+        if mode & getattr(stat, i) == getattr(stat, i):
+            print("    stat.", i)
+
+
+def print_win_ace_type(ace_type):
+    """Print ACE type."""
+    print("  -Type:")
+    for i in WIN_ACE_TYPES:
+        if getattr(ntsecuritycon, i) == ace_type:
+            print("    ", i)
+
+
+def print_win_permissions(win_perm, flags, object_type):
+    """Print permissions from ACE information."""
+    print("  -Permissions Mask:", hex(win_perm), "(" + str(win_perm) + ")")
+
+    # files and directories do permissions differently
+    if object_type == FILE:
+        permissions = WIN_FILE_PERMISSIONS
+    else:
+        permissions = WIN_DIR_PERMISSIONS
+        # directories have ACE that is inherited by children within them
+        if flags & ntsecuritycon.OBJECT_INHERIT_ACE == \
+                ntsecuritycon.OBJECT_INHERIT_ACE and flags & \
+                ntsecuritycon.INHERIT_ONLY_ACE == \
+                ntsecuritycon.INHERIT_ONLY_ACE:
+            permissions = WIN_DIR_INHERIT_PERMISSIONS
+
+        calc_mask = 0  # see if we are printing all of the permissions
+        for i in permissions:
+            if getattr(ntsecuritycon, i) & win_perm == getattr(
+                    ntsecuritycon, i):
+                calc_mask = calc_mask | getattr(ntsecuritycon, i)
+                print("    ", i)
+        print("  ", "Calculated Check Mask:", hex(calc_mask))
+
+
+def print_win_obj_info(path):
+    """Print windows object info."""
     if not os.path.exists(path):
         print(path, "does not exist!")
         raise FileNotFoundError('Path %s could not be found.' % path)
 
+    object_type = get_object_type(path)
+
     print("----------------------------------------")
-    print("FILE:", path)
-    print("Perms:", win_get_permissions(path))
+    if object_type == FILE:
+        print("FILE:", path)
+    else:
+        print("DIRECTORY:", path)
+    print_mode_permissions(win_get_permissions(path))
 
-    # get owner SID
-    sec_descriptor = win32security.GetFileSecurity(
-        path, win32security.OWNER_SECURITY_INFORMATION)
-    sid = sec_descriptor.GetSecurityDescriptorOwner()
-    print("Owner:", win32security.LookupAccountSid(None, sid))
-
-    # get group SID
-    sec_descriptor = win32security.GetFileSecurity(
-        path, win32security.GROUP_SECURITY_INFORMATION)
-    sid = sec_descriptor.GetSecurityDescriptorGroup()
-    print("Group:", win32security.LookupAccountSid(None, sid))
+    sids = win_get_object_sids(path)
+    print("Owner:", win32security.LookupAccountSid(None, sids[OWNER]))
+    print("Group:", win32security.LookupAccountSid(None, sids[GROUP]))
 
     # get ACEs
     sec_descriptor = win32security.GetFileSecurity(
@@ -457,42 +496,9 @@ def win_display_permissions(path):
         ace = dacl.GetAce(ace_no)
         print("ACE", ace_no)
 
-        print("  -Type")
-        for i in WIN_ACE_TYPES:
-            if getattr(ntsecuritycon, i) == ace[0][0]:
-                print("    ", i)
-
-        win_display_inheritance(ace[0][1])
-
-        print("  -mask", hex(ace[1]), "(" + str(ace[1]) + ")")
-
-        # files and directories do permissions differently
-
-        if os.path.isfile(path):
-            permissions = WIN_FILE_PERMISSIONS
-        else:
-            permissions = WIN_DIR_PERMISSIONS
-            # directories have ACE that is inherited by children within them
-            if ace[0][1] & ntsecuritycon.OBJECT_INHERIT_ACE == \
-               ntsecuritycon.OBJECT_INHERIT_ACE and ace[0][1] & \
-               ntsecuritycon.INHERIT_ONLY_ACE == \
-               ntsecuritycon.INHERIT_ONLY_ACE:
-                permissions = WIN_DIR_INHERIT_PERMISSIONS
-
-        calc_mask = 0  # see if we are printing all of the permissions
-        for i in permissions:
-            if getattr(ntsecuritycon, i) & ace[1] == getattr(ntsecuritycon, i):
-                calc_mask = calc_mask | getattr(ntsecuritycon, i)
-                print("    ", i)
-        print("  ", "Calculated Check Mask=", hex(calc_mask))
-        print("  -SID\n    ", win32security.LookupAccountSid(None, ace[2]))
-
-
-def print_mode_permissions(mode):
-    """Print component permissions in a stat mode."""
-    for i in STAT_KEYS:
-        if mode & getattr(stat, i) == getattr(stat, i):
-            print("    stat.", i)
+        print_win_ace_type(ace[0][0])
+        print_win_inheritance(ace[0][1])
+        print_win_permissions(ace[1], ace[0][1], object_type)
 
 
 def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
@@ -505,11 +511,11 @@ def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
     print("Created test file:", path)
 
     print("BEFORE Permissions:")
-    win_display_permissions(path)
+    print_win_obj_info(path)
 
     print("Setting permissions:")
     print_mode_permissions(mode)
     win_set_permissions(path, mode)
 
     print("AFTER Permissions:")
-    win_display_permissions(path)
+    print_win_obj_info(path)
