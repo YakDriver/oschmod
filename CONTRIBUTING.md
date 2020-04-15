@@ -14,8 +14,8 @@ When [reporting a bug][0] please include:
 
 ## Documentation Improvements
 
-*winlxchmod* could always use more documentation, whether as part of the official
-*winlxchmod* docs, in docstrings, or even on the web in blog posts, articles, and
+*oschmod* could always use more documentation, whether as part of the official
+*oschmod* docs, in docstrings, or even on the web in blog posts, articles, and
 such. The official documentation is maintained within this project in
 docstrings or in the [docs][3] directory. Contributions are
 welcome, and are made the same way as any other code.
@@ -33,15 +33,15 @@ If you are proposing a feature:
 
 ## Development Guide
 
-To set up *winlxchmod* for local development:
+To set up *oschmod* for local development:
 
-1.  Fork [*winlxchmod*](https://github.com/yakdriver/winlxchmod) (look for the
+1.  Fork [*oschmod*](https://github.com/yakdriver/oschmod) (look for the
     "Fork" button).
 
 2.  Clone your fork locally:
 
     ```shell
-    git clone https://github.com/your_name_here/winlxchmod.git && cd winlxchmod
+    git clone https://github.com/your_name_here/oschmod.git && cd oschmod
     ```
 
 3.  Create a branch for local development:
@@ -77,5 +77,5 @@ For pull request acceptance, you should:
 3.  Add a note to `CHANGELOG.md` about the changes. Include a link to the
     pull request.
 
-[0]: https://github.com/yakdriver/winlxchmod/issues
-[1]: https://travis-ci.org/yakdriver/winlxchmod/pull_requests
+[0]: https://github.com/yakdriver/oschmod/issues
+[1]: https://travis-ci.org/yakdriver/oschmod/pull_requests

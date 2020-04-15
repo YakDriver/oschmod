@@ -34,7 +34,7 @@ jobs:
         - pip install -r requirements/lint.txt
         - pip install --editable .
       script:
-        - pylint winlxchmod
+        - pylint oschmod
         - pylint tests/*py
         - flake8
     - stage: test

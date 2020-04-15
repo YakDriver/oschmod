@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""winlxchmod module.
+"""oschmod module.
 
 Module for working with file permissions.
 

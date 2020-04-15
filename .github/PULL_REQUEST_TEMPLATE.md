@@ -11,10 +11,10 @@ Output from Pytest:
 ```
 ================================================= test session starts ==================================================
 platform darwin -- Python 3.7.2, pytest-4.1.0, py-1.7.0, pluggy-0.8.1
-rootdir: /Users/jackhuman/dev/winlxchmod, inifile: setup.cfg
+rootdir: /Users/jackhuman/dev/oschmod, inifile: setup.cfg
 collected 10 items                                                                                                     
 
-tests/test_winlxchmod.py ..........                                                                                  [100%]
+tests/test_oschmod.py ..........                                                                                  [100%]
 
 ============================================== 10 passed in 6.50 seconds ===============================================
 

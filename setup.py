@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""winlxchmod setup script."""
+"""oschmod setup script."""
 from setuptools import setup
 
 

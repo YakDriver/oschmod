@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=redefined-outer-name
-"""test_winlxchmod module."""
-import winlxchmod
+"""test_oschmod module."""
+import oschmod
 
 
 def test_getowner():
     """Tests for stuff."""
-    winlxchmod.display_permissions("this_file")
+    oschmod.display_permissions("this_file")
