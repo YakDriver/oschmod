@@ -456,13 +456,13 @@ def print_win_permissions(win_perm, flags, object_type):
                 ntsecuritycon.INHERIT_ONLY_ACE:
             permissions = WIN_DIR_INHERIT_PERMISSIONS
 
-        calc_mask = 0  # see if we are printing all of the permissions
-        for i in permissions:
-            if getattr(ntsecuritycon, i) & win_perm == getattr(
-                    ntsecuritycon, i):
-                calc_mask = calc_mask | getattr(ntsecuritycon, i)
-                print("    ", i)
-        print("  ", "Calculated Check Mask:", hex(calc_mask))
+    calc_mask = 0  # see if we are printing all of the permissions
+    for i in permissions:
+        if getattr(ntsecuritycon, i) & win_perm == getattr(
+                ntsecuritycon, i):
+            calc_mask = calc_mask | getattr(ntsecuritycon, i)
+            print("    ", i)
+    print("  ", "Calculated Check Mask:", hex(calc_mask))
 
 
 def print_win_obj_info(path):
