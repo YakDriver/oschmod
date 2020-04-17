@@ -300,10 +300,6 @@ def _win_set_permissions(path, mode, object_type):
             system_ace = ace
         dacl.DeleteAce(0)
 
-    # sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-    # win32security.SetFileSecurity(
-    #     path, win32security.DACL_SECURITY_INFORMATION, sec_des)
-
     if system_ace:
         dacl.AddAccessAllowedAceEx(
             dacl.GetAclRevision(),
