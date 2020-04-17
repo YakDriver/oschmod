@@ -13,7 +13,7 @@ Python chmod that works on Windows and Linux
     <img src="https://img.shields.io/endpoint.svg?url=https://gh.mergify.io/badges/YakDriver/oschmod" alt="Mergify"/>
 </p>
 
-With ***oschmod***, on Windows and Linux, you can use stat modes (permissions) for files and directories. Python's `os.chmod()` does not work properly on Windows, only setting the read-only bit.
+With ***oschmod***, on Windows and Linux, you can use stat modes (permissions) for files and directories. Python's `os.chmod()` does not work properly on Windows, only setting the read-only bit. For more background, have a look at the [oschmod Wiki](https://github.com/YakDriver/oschmod/wiki).
 
 For example, on Linux, you can easily give a file owner read, write, and execute permissions, and deny the group and others any permissions (i.e., equivalent of `700`). You can do it like:
 
