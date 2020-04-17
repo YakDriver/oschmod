@@ -107,6 +107,8 @@ if HAS_PYWIN32:
         "INHERITED_ACE", "SUCCESSFUL_ACCESS_ACE_FLAG",
         "FAILED_ACCESS_ACE_FLAG")
 
+    SECURITY_NT_AUTHORITY = ('SYSTEM', 'NT AUTHORITY', 5)
+
 FILE = 0
 DIRECTORY = 1
 
@@ -257,7 +259,9 @@ def _win_get_permissions(path, object_type):
 
     for index in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(index)
-        if ace[0][0] == win32security.ACCESS_ALLOWED_ACE_TYPE:
+        if ace[0][0] == win32security.ACCESS_ALLOWED_ACE_TYPE and \
+                win32security.LookupAccountSid(None, ace[2]) != \
+                SECURITY_NT_AUTHORITY:
             # Not handling win32security.ACCESS_DENIED_ACE_TYPE
             mode = mode | convert_win_to_stat(
                 ace[1],
@@ -288,12 +292,22 @@ def _win_set_permissions(path, mode, object_type):
         win32security.DACL_SECURITY_INFORMATION)
     dacl = sec_des.GetSecurityDescriptorDacl()
 
+    system_ace = None
     for _ in range(0, dacl.GetAceCount()):
+        ace = dacl.GetAce(0)
+        if win32security.LookupAccountSid(
+                None, ace[2]) == SECURITY_NT_AUTHORITY:
+            system_ace = ace
         dacl.DeleteAce(0)
 
-    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(
-        path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+    # sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+    # win32security.SetFileSecurity(
+    #     path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+
+    if system_ace:
+        dacl.AddAccessAllowedAceEx(
+            dacl.GetAclRevision(),
+            win32security.NO_INHERITANCE, system_ace[1], system_ace[2]))
 
     sids = win_get_object_sids(path)
 
