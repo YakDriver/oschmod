@@ -152,7 +152,7 @@ STAT_KEYS = (
     "S_IXOTH"
 )
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 
 def get_mode(path):
@@ -354,7 +354,7 @@ def print_win_inheritance(flags):
 
 def print_mode_permissions(mode):
     """Print component permissions in a stat mode."""
-    print("Mode:", oct(mode), "(Decimal: " + str(mode) + ")" )
+    print("Mode:", oct(mode), "(Decimal: " + str(mode) + ")")
     for i in STAT_KEYS:
         if mode & getattr(stat, i) == getattr(stat, i):
             print("  stat." + i)
