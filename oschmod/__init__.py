@@ -144,7 +144,7 @@ STAT_KEYS = (
     "S_IXOTH"
 )
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 
 def get_mode(path):
