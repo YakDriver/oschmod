@@ -1,5 +1,15 @@
 ## Changelog
 
+### 0.1.5
+
+**Commit Delta**: [Change from 0.1.0 release](https://github.com/YakDriver/oschmod/compare/0.1.4...0.1.5)
+
+**Released**: 2020.04.17
+
+**Summary**:
+
+*   Create Linux version of permissions test (`oschmod.perm_test()`)
+
 ### 0.1.4
 
 **Commit Delta**: [Change from 0.1.0 release](https://github.com/YakDriver/oschmod/compare/0.1.0...0.1.4)

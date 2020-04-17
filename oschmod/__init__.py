@@ -40,6 +40,14 @@ try:
 except ImportError:
     pass
 
+HAS_PWD = False
+try:
+    import pwd            # noqa: F401
+    import grp            # noqa: F401
+    HAS_PWD = True
+except ImportError:
+    pass
+
 if IS_WINDOWS and not HAS_PYWIN32:
     raise ImportError("win32security and ntsecuritycon required on Windows")
 
@@ -144,7 +152,7 @@ STAT_KEYS = (
     "S_IXOTH"
 )
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 
 def get_mode(path):
@@ -170,13 +178,26 @@ def get_object_type(path):
     return object_type
 
 
+def get_owner(path):
+    """Get the object owner."""
+    if IS_WINDOWS:
+        return win32security.LookupAccountSid(None, win_get_owner_sid(path))
+    return pwd.getpwuid(os.stat(path).st_uid).pw_name
+
+
+def get_group(path):
+    """Get the object group."""
+    if IS_WINDOWS:
+        return win32security.LookupAccountSid(None, win_get_group_sid(path))
+    return grp.getgrgid(os.stat(path).st_gid).gr_name
+
+
 def win_get_owner_sid(path):
     """Get the file owner."""
     sec_descriptor = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT,
         win32security.OWNER_SECURITY_INFORMATION)
-    sid = sec_descriptor.GetSecurityDescriptorOwner()
-    return sid
+    return sec_descriptor.GetSecurityDescriptorOwner()
 
 
 def win_get_group_sid(path):
@@ -333,7 +354,7 @@ def print_win_inheritance(flags):
 
 def print_mode_permissions(mode):
     """Print component permissions in a stat mode."""
-    print("Mode:", mode, "(", oct(mode), ")")
+    print("Mode:", oct(mode), "(Decimal: " + str(mode) + ")")
     for i in STAT_KEYS:
         if mode & getattr(stat, i) == getattr(stat, i):
             print("  stat." + i)
@@ -372,8 +393,8 @@ def print_win_permissions(win_perm, flags, object_type):
     print("  -Mask calculated from printed permissions:", hex(calc_mask))
 
 
-def print_win_obj_info(path):
-    """Print windows object info."""
+def print_obj_info(path):
+    """Prints object security permission info."""
     if not os.path.exists(path):
         print(path, "does not exist!")
         raise FileNotFoundError('Path %s could not be found.' % path)
@@ -385,12 +406,18 @@ def print_win_obj_info(path):
         print("FILE:", path)
     else:
         print("DIRECTORY:", path)
-    print_mode_permissions(win_get_permissions(path))
 
-    sids = win_get_object_sids(path)
-    print("Owner:", win32security.LookupAccountSid(None, sids[OWNER]))
-    print("Group:", win32security.LookupAccountSid(None, sids[GROUP]))
+    print_mode_permissions(get_mode(path))
 
+    print("Owner:", get_owner(path))
+    print("Group:", get_group(path))
+
+    if IS_WINDOWS:
+        _print_win_obj_info(path)
+
+
+def _print_win_obj_info(path):
+    """Print windows object security info."""
     # get ACEs
     sec_descriptor = win32security.GetFileSecurity(
         path, win32security.DACL_SECURITY_INFORMATION)
@@ -407,10 +434,10 @@ def print_win_obj_info(path):
 
         print_win_ace_type(ace[0][0])
         print_win_inheritance(ace[0][1])
-        print_win_permissions(ace[1], ace[0][1], object_type)
+        print_win_permissions(ace[1], ace[0][1], get_object_type(path))
 
 
-def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
+def perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
     """Creates test file and modifies permissions."""
     path = ''.join(
         random.choice(string.ascii_letters) for i in range(10)) + '.txt'
@@ -420,11 +447,11 @@ def win_perm_test(mode=stat.S_IRUSR | stat.S_IWUSR):
     print("Created test file:", path)
 
     print("BEFORE Permissions:")
-    print_win_obj_info(path)
+    print_obj_info(path)
 
     print("Setting permissions:")
     print_mode_permissions(mode)
-    win_set_permissions(path, mode)
+    set_mode(path, mode)
 
     print("AFTER Permissions:")
-    print_win_obj_info(path)
+    print_obj_info(path)
