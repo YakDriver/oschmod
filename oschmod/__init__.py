@@ -337,7 +337,7 @@ def print_win_inheritance(flags):
 
 def print_mode_permissions(mode):
     """Print component permissions in a stat mode."""
-    print("  -Mode:", mode, "(", hex(mode), ")")
+    print("  -Mode:", mode, "(", oct(mode), ")")
     for i in STAT_KEYS:
         if mode & getattr(stat, i) == getattr(stat, i):
             print("    stat." + i)
