@@ -307,7 +307,7 @@ def _win_set_permissions(path, mode, object_type):
     if system_ace:
         dacl.AddAccessAllowedAceEx(
             dacl.GetAclRevision(),
-            win32security.NO_INHERITANCE, system_ace[1], system_ace[2]))
+            win32security.NO_INHERITANCE, system_ace[1], system_ace[2])
 
     sids = win_get_object_sids(path)
 
