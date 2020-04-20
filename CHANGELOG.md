@@ -1,8 +1,18 @@
 ## Changelog
 
+### 0.2.0
+
+**Commit Delta**: [Change from 0.1.5 release](https://github.com/YakDriver/oschmod/compare/0.1.5...0.2.0)
+
+**Released**: 2020.04.20
+
+**Summary**:
+
+*   Add recursive version of `oschmod.set_mode()`: `oschmod.set_mode_recursive()`
+
 ### 0.1.5
 
-**Commit Delta**: [Change from 0.1.0 release](https://github.com/YakDriver/oschmod/compare/0.1.4...0.1.5)
+**Commit Delta**: [Change from 0.1.4 release](https://github.com/YakDriver/oschmod/compare/0.1.4...0.1.5)
 
 **Released**: 2020.04.17
 
