@@ -169,6 +169,39 @@ def set_mode(path, mode):
     return os.chmod(path, mode)
 
 
+def set_mode_recursive(path, mode, dir_mode=None):
+    r"""
+    Set all file and directory permissions at or under path to modes.
+
+    Args:
+    path: (:obj:`str`)
+        Object which will have its mode set. If path is a file, only its mode
+        is set - no recursion occurs. If path is a directory, its mode and the
+        mode of all files and subdirectories below it are set.
+
+    mode: (`int`)
+        Mode to be applied to object(s).
+
+    dir_mode: (`int`)
+        If provided, this mode is given to all directories only.
+
+    """
+    if get_object_type(path) == FILE:
+        return set_mode(path, mode)
+
+    if not dir_mode:
+        dir_mode = mode
+
+    for root, dirs, files in os.walk(path, topdown=False):
+        for one_file in files:
+            set_mode(os.path.join(root, one_file), mode)
+
+        for one_dir in dirs:
+            set_mode(os.path.join(root, one_dir), dir_mode)
+
+    return set_mode(path, dir_mode)
+
+
 def get_object_type(path):
     """Get whether object is file or directory."""
     object_type = DIRECTORY
