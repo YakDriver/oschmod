@@ -152,7 +152,7 @@ STAT_KEYS = (
     "S_IXOTH"
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 def get_mode(path):
@@ -349,7 +349,7 @@ def _win_set_permissions(path, mode, object_type):
     system_ace = None
     for _ in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(0)
-        if win32security.LookupAccountSid(
+        if ace[2] and ace[2].IsValid() and win32security.LookupAccountSid(
                 None, ace[2]) == SECURITY_NT_AUTHORITY:
             system_ace = ace
         dacl.DeleteAce(0)

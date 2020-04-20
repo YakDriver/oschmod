@@ -1,5 +1,15 @@
 ## Changelog
 
+### 0.2.1
+
+**Commit Delta**: [Change from 0.2.0 release](https://github.com/YakDriver/oschmod/compare/0.2.0...0.2.1)
+
+**Released**: 2020.04.20
+
+**Summary**:
+
+*   Fix issue with account lookup failing with error (`No mapping between account names and security IDs was done.`).
+
 ### 0.2.0
 
 **Commit Delta**: [Change from 0.1.5 release](https://github.com/YakDriver/oschmod/compare/0.1.5...0.2.0)
