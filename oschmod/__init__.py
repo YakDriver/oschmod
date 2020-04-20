@@ -349,7 +349,7 @@ def _win_set_permissions(path, mode, object_type):
     system_ace = None
     for _ in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(0)
-        if win32security.LookupAccountSid(
+        if ace[2] and ace[2].IsValid() and win32security.LookupAccountSid(
                 None, ace[2]) == SECURITY_NT_AUTHORITY:
             system_ace = ace
         dacl.DeleteAce(0)
