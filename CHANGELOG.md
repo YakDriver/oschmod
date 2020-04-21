@@ -1,10 +1,10 @@
 ## Changelog
 
-### 0.2.1
+### 0.2.2
 
-**Commit Delta**: [Change from 0.2.0 release](https://github.com/YakDriver/oschmod/compare/0.2.0...0.2.1)
+**Commit Delta**: [Change from 0.2.0 release](https://github.com/YakDriver/oschmod/compare/0.2.0...0.2.2)
 
-**Released**: 2020.04.20
+**Released**: 2020.04.21
 
 **Summary**:
 
