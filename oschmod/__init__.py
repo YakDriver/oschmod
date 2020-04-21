@@ -36,6 +36,7 @@ HAS_PYWIN32 = False
 try:
     import ntsecuritycon  # noqa: F401
     import win32security  # noqa: F401
+    from pywintypes import error as pywinerror
     HAS_PYWIN32 = True
 except ImportError:
     pass
@@ -152,7 +153,7 @@ STAT_KEYS = (
     "S_IXOTH"
 )
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 
 def get_mode(path):
@@ -349,9 +350,12 @@ def _win_set_permissions(path, mode, object_type):
     system_ace = None
     for _ in range(0, dacl.GetAceCount()):
         ace = dacl.GetAce(0)
-        if ace[2] and ace[2].IsValid() and win32security.LookupAccountSid(
-                None, ace[2]) == SECURITY_NT_AUTHORITY:
-            system_ace = ace
+        try:
+            if ace[2] and ace[2].IsValid() and win32security.LookupAccountSid(
+                    None, ace[2]) == SECURITY_NT_AUTHORITY:
+                system_ace = ace
+        except pywinerror:
+            print("Found orphaned SID:", ace[2])
         dacl.DeleteAce(0)
 
     if system_ace:
