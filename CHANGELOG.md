@@ -1,5 +1,15 @@
 ## Changelog
 
+### 0.2.4
+
+**Commit Delta**: [Change from 0.2.2 release](https://github.com/YakDriver/oschmod/compare/0.2.2...0.2.4)
+
+**Released**: 2020.04.21
+
+**Summary**:
+
+*   Add command line interface (CLI).
+
 ### 0.2.2
 
 **Commit Delta**: [Change from 0.2.0 release](https://github.com/YakDriver/oschmod/compare/0.2.0...0.2.2)
