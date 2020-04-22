@@ -41,6 +41,37 @@ import oschmod
 oschmod.set_mode('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 ```
 
+## CLI
+
+The `oschmod` CLI works similarly to `chmod` albeit with fewer options:
+
+```console
+$ oschmod -h
+usage: oschmod [-h] [-R] mode object
+
+Change the mode (permissions) of a file or directory
+
+positional arguments:
+  mode        octal mode of the object
+  object      file or directory
+
+optional arguments:
+  -h, --help  show this help message and exit
+  -R          apply mode recursively
+```
+
+For example, to open up a file to the world, you can run this command:
+
+```console
+$ oschmod 777 file_name
+```
+
+As another example, you can lock down a file to just the file owner:
+
+```console
+$ oschmod 700 file_name
+```
+
 ## Installation
 
 ```console
