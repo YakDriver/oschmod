@@ -15,7 +15,7 @@ Python chmod that works on Windows and Linux
 
 Use ***oschmod*** to set permissions for files and directories on Windows, Linux and macOS. While Python's standard libraries include a simple command to do this on Linux and macOS (`os.chmod()`), the same command does not work on Windows.
 
-* Read more about [oschmod](https://medium.com/faun/secure-files-with-python-on-windows-macos-and-linux-7b2b9899992) on Medium
+* Read more about [oschmod](https://medium.com/@dirk.avery/securing-files-on-windows-macos-and-linux-7b2b9899992) on Medium
 * For more background, have a look at the [oschmod Wiki](https://github.com/YakDriver/oschmod/wiki).
 
 ## Usage
