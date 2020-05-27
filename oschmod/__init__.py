@@ -230,7 +230,7 @@ def get_effective_mode(current_mode, symbolic):
     if not isinstance(symbolic, str):
         raise AttributeError('symbolic must be a string')
 
-    result = re.search(r'^([ugoa]*)([-+=])([rwx]+)$', symbolic)
+    result = re.search(r'^([ugoa]*)([-+=])([rwx]*)$', symbolic)
     if result is None:
         raise AttributeError('symbolic bad format')
 
