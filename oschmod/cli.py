@@ -14,7 +14,8 @@ def main():
         description='Change the mode (permissions) of a file or directory')
     parser.add_argument('-R', action='store_true',
                         help='apply mode recursively')
-    parser.add_argument('mode', nargs=1, help='octal or symbolic mode of the object')
+    parser.add_argument(
+        'mode', nargs=1, help='octal or symbolic mode of the object')
     parser.add_argument('object', nargs=1, help='file or directory')
 
     args = parser.parse_args()
