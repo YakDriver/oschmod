@@ -279,7 +279,7 @@ def test_symbolic_use():
     time.sleep(1)  # modes aren't always ready to go immediately
 
     # set permissions - the test
-    oschmod.set_mode_recursive(topdir, "u=rw,go-rwx", "u+rwx,go-rwx")
+    oschmod.set_mode_recursive(topdir, "u=rw,go=", "u=rwx,go=")
     time.sleep(1)  # modes aren't always ready to go immediately
 
     # check it out
