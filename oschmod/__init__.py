@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """oschmod module.
 
-Module for working with file permissions.
+Module for working with file permissions that are consistent across Windows,
+macOS, and Linux.
 
 These bitwise permissions from the stat module can be used with this module:
     stat.S_IRWXU   # Mask for file owner permissions
@@ -27,6 +28,7 @@ These bitwise permissions from the stat module can be used with this module:
 import os
 import platform
 import random
+import re
 import stat
 import string
 
@@ -164,10 +166,30 @@ def get_mode(path):
 
 
 def set_mode(path, mode):
-    """Get bitwise mode (stat) of object (dir or file)."""
+    """
+    Set bitwise mode (stat) of object (dir or file).
+
+    Three types of modes can be used:
+    1. Decimal mode - an integer representation of set bits (eg, 512)
+    2. Octal mode - a string expressing an octal number (eg, "777")
+    3. Symbolic representation - a string with modifier symbols (eg, "+x")
+    """
+    new_mode = 0
+    if isinstance(mode, int):
+        new_mode = mode
+    elif isinstance(mode, str):
+        if '+' in mode or '-' in mode or '=' in mode:
+            current_mode = get_mode(path)
+            for mode_piece in mode.split(","):
+                set_mode(path, get_effective_mode(
+                    current_mode, mode_piece.strip()))
+            return True
+
+        new_mode = int(mode, 8)
+
     if IS_WINDOWS:
-        return win_set_permissions(path, mode)
-    return os.chmod(path, mode)
+        return win_set_permissions(path, new_mode)
+    return os.chmod(path, new_mode)
 
 
 def set_mode_recursive(path, mode, dir_mode=None):
@@ -201,6 +223,40 @@ def set_mode_recursive(path, mode, dir_mode=None):
             set_mode(os.path.join(root, one_dir), dir_mode)
 
     return set_mode(path, dir_mode)
+
+
+def get_effective_mode(current_mode, symbolic):
+    """Get octal mode, given current mode and symbolic mode modifier."""
+    if not isinstance(symbolic, str):
+        raise AttributeError('symbolic must be a string')
+
+    result = re.search(r'^([ugoa]*)([-+=])([rwx]+)$', symbolic)
+    if result is None:
+        raise AttributeError('symbolic bad format')
+
+    whom = result.group(1) or "ugo"
+    operation = result.group(2)
+    perm = result.group(3)
+
+    if "a" in whom:
+        whom = "ugo"
+
+    # bitwise magic
+    bit_perm = _get_basic_symbol_to_mode(perm)
+    mask_mode = ("u" in whom and bit_perm << 6) | \
+        ("g" in whom and bit_perm << 3) | \
+        ("o" in whom and bit_perm << 0)
+
+    if operation == "=":
+        original = ("u" not in whom and current_mode & 448) | \
+            ("g" not in whom and current_mode & 56) | \
+            ("o" not in whom and current_mode & 7)
+        return mask_mode | original
+
+    if operation == "+":
+        return current_mode | mask_mode
+
+    return current_mode & ~mask_mode
 
 
 def get_object_type(path):
@@ -300,6 +356,13 @@ def win_get_permissions(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
 
     return _win_get_permissions(path, get_object_type(path))
+
+
+def _get_basic_symbol_to_mode(symbol):
+    """Calculate numeric value of set of 'rwx'."""
+    return ("r" in symbol and 1 << 2) | \
+        ("w" in symbol and 1 << 1) | \
+        ("x" in symbol and 1 << 0)
 
 
 def _win_get_permissions(path, object_type):
