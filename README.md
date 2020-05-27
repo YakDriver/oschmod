@@ -1,6 +1,3 @@
-# oschmod
-Python chmod that works on Windows and Linux
-
 <p>
     <a href="./LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/YakDriver/oschmod.svg" /></a>
@@ -13,37 +10,24 @@ Python chmod that works on Windows and Linux
     <img src="https://img.shields.io/endpoint.svg?url=https://gh.mergify.io/badges/YakDriver/oschmod" alt="Mergify"/>
 </p>
 
-Use ***oschmod*** to set permissions for files and directories on Windows, Linux and macOS. While Python's standard libraries include a simple command to do this on Linux and macOS (`os.chmod()`), the same command does not work on Windows.
+# oschmod TL;DR
+
+***oschmod*** sets consistent file permissions across Windows, Linux and macOS.
+
+Python includes `os.chmod()` to set read, write, and execute file permissions. However, on Windows, Python's `os.chmod()` basically has no effect. Even worse, Windows Python does not give a warning or error -- you think you've protected a file but you have not. In order to set the same file permissions across platforms, use ***oschmod***.
 
 * Read more about [oschmod](https://medium.com/@dirk.avery/securing-files-on-windows-macos-and-linux-7b2b9899992) on Medium
 * For more background, have a look at the [oschmod Wiki](https://github.com/YakDriver/oschmod/wiki).
 
-## Usage
+## Installation
 
-The problem is that on Linux and macOS, you can easily set distinct permissions for a file's owner, group, and all others. It takes one command and one mode, or, in other words, a number representing bitwise permissions for reading, writing, and executing. On Linux and macOS, you use the `os` module and `os.chmod()`.
-
-Misleadingly, on Windows, `os.chmod()` does not have the same effect and does not give a warning or error. You think you've protected a file but you have not. 
-
-For example, on Linux or macOS, to give a file owner read, write, and execute permissions and deny the group and others any permissions (i.e., equivalent of `700`), you can make a single call:
-
-```python
-import os
-import stat
-os.chmod('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+```console
+$ pip install oschmod
 ```
 
-Running the same command on Windows does not achieve the same results. The owner isn't given any permissions and the group and others are not denied any permissions. All you can do is restrict anyone from deleting, changing or renaming the file. That's nothing like what `os.chmod()` does.
+## Command line interface
 
-However, using ***oschmod*** you can use the same command on Windows, macOS or Linux and get the same results:
-
-```python
-import oschmod
-oschmod.set_mode('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-```
-
-## CLI
-
-The `oschmod` CLI works similarly to `chmod` albeit with fewer options:
+***oschmod*** brings the ability to set consistent file permissions using the command line to Windows, macOS, and Linux platforms. If you are familiar with `chmod` on Unix, Linux and/or macOS, ***oschmod*** works similarly, albeit with fewer options. 
 
 ```console
 $ oschmod -h
@@ -60,20 +44,38 @@ optional arguments:
   -R          apply mode recursively
 ```
 
-For example, to open up a file to the world, you can run this command:
+For example, to give everyone read, write, and execute permissions on a file, you can run this command:
 
 ```console
 $ oschmod 777 file_name
 ```
 
-As another example, you can lock down a file to just the file owner:
+You can also lock down a file to just give the file owner read, write, and execute permissions and deny any permissions to everyone else:
 
 ```console
 $ oschmod 700 file_name
 ```
 
-## Installation
+## Python Usage
 
-```console
-$ pip install oschmod
+You can use ***oschmod*** from Python code.
+
+Replacing `os.chmod()` with ***oschmod*** is straightforward and you will get consistent file permissions on Windows, macOS, and Linux:
+
+For example, this is an example of using `os.chmod()` in Python:
+
+```python
+import os
+import stat
+os.chmod('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+```
+
+On Linux or macOS, this gives a file's owner read, write, and execute permissions and denies the group and others any permissions (i.e., equivalent of `700`). On Windows, the best this command may have done is set the read-only attribute of the file. The read-only attribute restricts anyone from deleting, changing or renaming the file. The owner isn't given any permissions and the group and others are not denied any permissions. There is no consistency between the platforms.
+
+However, using ***oschmod*** you can use the same command on Windows, macOS or Linux and get the same results:
+
+```python
+import oschmod
+import stat
+oschmod.set_mode('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 ```
