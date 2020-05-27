@@ -32,7 +32,6 @@ import re
 import stat
 import string
 
-
 IS_WINDOWS = platform.system() == 'Windows'
 HAS_PYWIN32 = False
 try:
@@ -179,13 +178,9 @@ def set_mode(path, mode):
         new_mode = mode
     elif isinstance(mode, str):
         if '+' in mode or '-' in mode or '=' in mode:
-            current_mode = get_mode(path)
-            for mode_piece in mode.split(","):
-                set_mode(path, get_effective_mode(
-                    current_mode, mode_piece.strip()))
-            return True
-
-        new_mode = int(mode, 8)
+            new_mode = get_effective_mode(get_mode(path), mode)
+        else:
+            new_mode = int(mode, 8)
 
     if IS_WINDOWS:
         return win_set_permissions(path, new_mode)
@@ -225,14 +220,25 @@ def set_mode_recursive(path, mode, dir_mode=None):
     return set_mode(path, dir_mode)
 
 
+def _get_effective_mode_multiple(current_mode, modes):
+    """Get octal mode, given current mode and symbolic mode modifiers."""
+    new_mode = current_mode
+    for mode in modes.split(","):
+        new_mode = get_effective_mode(new_mode, mode)
+    return new_mode
+
+
 def get_effective_mode(current_mode, symbolic):
     """Get octal mode, given current mode and symbolic mode modifier."""
     if not isinstance(symbolic, str):
         raise AttributeError('symbolic must be a string')
 
-    result = re.search(r'^([ugoa]*)([-+=])([rwx]*)$', symbolic)
+    if "," in symbolic:
+        return _get_effective_mode_multiple(current_mode, symbolic)
+
+    result = re.search(r'^\s*([ugoa]*)([-+=])([rwx]*)\s*$', symbolic)
     if result is None:
-        raise AttributeError('symbolic bad format')
+        raise AttributeError('bad format of symbolic representation modifier')
 
     whom = result.group(1) or "ugo"
     operation = result.group(2)
