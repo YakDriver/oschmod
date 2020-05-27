@@ -1,5 +1,15 @@
 ## Changelog
 
+### 0.3.0
+
+**Commit Delta**: [Change from 0.2.4 release](https://github.com/YakDriver/oschmod/compare/0.2.4...0.3.0)
+
+**Released**: 2020.05.27
+
+**Summary**:
+
+*   Adds symbolic representation for mode changes (e.g., `+x`, `u+rwx`, `ugo-x`).
+
 ### 0.2.4
 
 **Commit Delta**: [Change from 0.2.2 release](https://github.com/YakDriver/oschmod/compare/0.2.2...0.2.4)
