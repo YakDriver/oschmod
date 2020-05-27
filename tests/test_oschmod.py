@@ -136,6 +136,9 @@ def test_symbolic_effective_add():
     assert oschmod.get_effective_mode(0b110001010, "+rwx") == 0b111111111
     assert oschmod.get_effective_mode(0b110001010, "a+rwx") == 0b111111111
 
+
+def test_symbolic_effective_add2():
+    """Check calculation of effective mode from symbolic."""
     # randomly chosen starting permission = 53
     assert oschmod.get_effective_mode(0b000110101, "g+x") == 0b000111101
     assert oschmod.get_effective_mode(0b000110101, "o+x") == 0b000110101
