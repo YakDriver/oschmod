@@ -10,9 +10,11 @@
     <img src="https://img.shields.io/endpoint.svg?url=https://gh.mergify.io/badges/YakDriver/oschmod" alt="Mergify"/>
 </p>
 
-# oschmod TL;DR
+# oschmod 
 
 ***oschmod*** sets consistent file permissions across Windows, Linux and macOS.
+
+## TL;DR
 
 Python includes `os.chmod()` to set read, write, and execute file permissions. However, on Windows, Python's `os.chmod()` basically has no effect. Even worse, Windows Python does not give a warning or error -- you think you've protected a file but you have not. In order to set the same file permissions across platforms, use ***oschmod***.
 
