@@ -1,4 +1,6 @@
 language: python
+os: linux
+dist: xenial
 stages:
   - lint
   - test
@@ -15,7 +17,6 @@ env:
     - RELEASE_VERSION=$(grep -E '^current_version' $TRAVIS_BUILD_DIR/.bumpversion.cfg | sed 's/^.*= //')
     - PRIOR_VERSION=$(git describe --abbrev=0 --tags)
 
-stage: test
 cache: pip
 before_cache:
   - rm -f $HOME/.cache/pip/log/debug.log
@@ -52,19 +53,19 @@ jobs:
         - provider: pypi
           server: https://test.pypi.org/legacy/
           distributions: sdist bdist_wheel
-          user: __token__
+          username: __token__
           password:
             secure: "m3K/C6HINvSihnKJvkZ/ue2f+RqBhRIuZjkN8gbWcs+GpOdPazA0FMDjAz7sAzh5+n3ChKvNeA1VzEZQ2x6qNLi8xMdp+J1evC5RA7ag/lZ8F5YVvzz4XRsyAjxmIDvtM3K+6C49U7fP7+TmDk6h6+DDIIVYkU0O6eZhxqttuoqOs5xrUhKcKhnt8tt4kU//zaU6OLVuPQ5MdMCPTc9Fi9LQefXh0ZGYd2JafkxdsmyPySLcJwSeOs0k/31UIcuX1tspMCsD9RrXAFQqbdOohUl2iS+NdB/T1Ph09/XmMk06KmAaut5cA9RBxAYBH9GKF0QdhBQC0QZVe54/eyWfmXRUhTuXy4X2EXq2cPS1AJhf0b8HOgFruGqHtb2IiL2iCfw21NojGHp77BtFegsFBYDwIwcN6Vj0Kk99madwliUwY2pIhcj/4uYLw6qqX8r13dBHyElrD2zjOPcFXlYMo4YygI7qyaL4V+HIWl133Sq6oJVzz0U1pP93VOq2Lj4HSrLrqugIxjIwvfiKMFgiLxHVvioSMOTRwuo60YKMivZGcHXiW4OpPijAxNqpyte6zK9y1+P8FAXwfe/sS7KsZPfSuTT9YiPvKqchZYZLLI0RnYoDxvn4M1ZDxQSt5IATnGgA54Sva1fV3x2u5TUBvxZkZcV1ah1NaPC8mZyMmaw="
-          skip_cleanup: true
-          skip_upload_docs: true
+          cleanup: false
+          upload_docs: false
           on:
             branch: master
         - provider: pypi
           distributions: sdist bdist_wheel
-          user: __token__
+          username: __token__
           password:
             secure: "bCxmyUGMybtgQPJufwT0A5Y/dQrqRzuCMRfsTLKDJRVldgnu6sP07MdpXqQcjyMxNCPJu8PWMddm3ydwj6hS7ID3ntP7ADUPdUAyl0IwVKdCqAjQlI+EdNhYnHtBXyOSuju6Nl4u9gjtNfzsedkqp/03KsN2PZDIgjoyg0b4Rs+JxFgsCzAtzMiJhv9C33kMOKE4goZik3K5RJ8bfxsvrvt38vAS+l2GAyw4A5ur9LqD9/b6NzoZdheP2/dqnlBkycw+cpk0BXx9S6apRMfhlRxv28u992LeA2XYeWvgifEzP8kYdme/vAhzLMkqCdBGPpkOKtmSLLHTuDKt18AIwsH0FxPUUm6mO5Uhpl76d/d8SVxHXI9IvG/jn2hI5kPhtZ1fQ/JMLo7FHoN/ZtdIUe2ffiFT+ialw0WYlDSj3JeODxd2SeN/QGM9FJ0f57QYzXNkmTpXhcc6qQ7aKh1J7NZn6mIm8xYdBnRqm/c1T9nAsfG3Bzk/7GqTs2IUUQPfS0PNc7XcSDA3KIXwQta3yY28MtOFBnh7dWzOOC0tleyngulJGAXKJVD+MiS+MtAwlU8IWlYqYufsXbV5c5+UcMR2L6WThRDT4YfIRvtiLILyaWrmAk0mzoeqGQ0lLUonYDkIk/f630nWAt2wifg8oxVLRQV/fgjdW+UqnqcI2v4="
-          skip_upload_docs: true
+          upload_docs: false
           on:
             tags: true
     - stage: deploy
@@ -82,10 +83,10 @@ jobs:
           name: $RELEASE_VERSION
           tag_name: $RELEASE_VERSION
           target_commitish: $TRAVIS_COMMIT
-          body: $RELEASE_BODY
+          release_notes: $RELEASE_BODY
           draft: false
-          skip_cleanup: true
-          api_key:
+          cleanup: false
+          token:
             secure: "Sm1sNSVGUFDb+bZjNvIiH65r28Y83q2invQop9qW2iSDQaEiOLQT7JKzeSUZJxjzq824aK2aU8se9f8wkKwlTaVGjou5tCRUncsPf8biFKgJSUKl0SEYCJ3Dzff8xi+Mk2bOOUo3VgnDTKdNtQ62dzJOrI2mLZ7dymSf8e5LBHjbSNzVPE+KOm7/8LERgyO7hGbuU8AYK2ixZI7Ltm2MYFu88KH2o31wQPflNmCqpIqNP8IrE1tW//IcLKrvArrC0N4nOD8/I8bvb2uLVsaolruC+P+ohlIuksfeqB4XXQxRuNHZDJU9QExrhY3gzZOGm5B8ucj71H56W/3DgD0RV9pT0BAWynHUhtSCCLI4MCaTVq2jAVkjgnpO1rzbauYoXHQenZZNoyJ+l6bHF2Uz9oC8IwtEe6EiJ1TwnFHMvWtG3PVm4d9xuirl1E+xKi4mYQ/WwnNmOcYEGxtLIeduV51bqZYi3CxADxv51+KOpDJMSv3+eQcnUgtGozNqCFzaL2Lnl1RYWQLTAHBBxXl91tprunsno5usMok8sGz5JJ7f/+U53gTZitzpXYS6qTyGcZbde6HOAH/vJzpoI32VbaLWfNrcTwFpVVehFYPW6hdUgmCTGehGCqWkRtMdJkyt3MhJ0PRco0lU0YQ77ZO/6Yqv+Rg8g0iJQYIr5QG3KeY="
           on:
             branch: master
