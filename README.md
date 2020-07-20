@@ -2,7 +2,7 @@
     <a href="./LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/YakDriver/oschmod.svg" /></a>
     <a href="http://travis-ci.org/YakDriver/oschmod" alt="Build status">
-        <img src="https://travis-ci.org/YakDriver/oschmod.svg?branch=master" /></a>
+        <img src="https://travis-ci.org/YakDriver/oschmod.svg?branch=main" /></a>
     <a href="https://pypi.python.org/pypi/oschmod" alt="Python versions">
         <img src="https://img.shields.io/pypi/pyversions/oschmod.svg" /></a>
     <a href="https://pypi.python.org/pypi/oschmod" alt="Version">
