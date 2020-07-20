@@ -59,7 +59,7 @@ jobs:
           cleanup: false
           upload_docs: false
           on:
-            branch: master
+            branch: main
         - provider: pypi
           distributions: sdist bdist_wheel
           username: __token__
@@ -69,7 +69,7 @@ jobs:
           on:
             tags: true
     - stage: deploy
-      if: branch = master AND tag IS blank
+      if: branch = main AND tag IS blank
       python: 3.6
       install: skip
       script:
@@ -89,5 +89,5 @@ jobs:
           token:
             secure: "Sm1sNSVGUFDb+bZjNvIiH65r28Y83q2invQop9qW2iSDQaEiOLQT7JKzeSUZJxjzq824aK2aU8se9f8wkKwlTaVGjou5tCRUncsPf8biFKgJSUKl0SEYCJ3Dzff8xi+Mk2bOOUo3VgnDTKdNtQ62dzJOrI2mLZ7dymSf8e5LBHjbSNzVPE+KOm7/8LERgyO7hGbuU8AYK2ixZI7Ltm2MYFu88KH2o31wQPflNmCqpIqNP8IrE1tW//IcLKrvArrC0N4nOD8/I8bvb2uLVsaolruC+P+ohlIuksfeqB4XXQxRuNHZDJU9QExrhY3gzZOGm5B8ucj71H56W/3DgD0RV9pT0BAWynHUhtSCCLI4MCaTVq2jAVkjgnpO1rzbauYoXHQenZZNoyJ+l6bHF2Uz9oC8IwtEe6EiJ1TwnFHMvWtG3PVm4d9xuirl1E+xKi4mYQ/WwnNmOcYEGxtLIeduV51bqZYi3CxADxv51+KOpDJMSv3+eQcnUgtGozNqCFzaL2Lnl1RYWQLTAHBBxXl91tprunsno5usMok8sGz5JJ7f/+U53gTZitzpXYS6qTyGcZbde6HOAH/vJzpoI32VbaLWfNrcTwFpVVehFYPW6hdUgmCTGehGCqWkRtMdJkyt3MhJ0PRco0lU0YQ77ZO/6Yqv+Rg8g0iJQYIr5QG3KeY="
           on:
-            branch: master
+            branch: main
             condition: '"$PRIOR_VERSION" != "$RELEASE_VERSION"'
