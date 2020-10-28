@@ -310,7 +310,7 @@ def win_get_other_sid():
     For now this is the Users builtin account. In the future, probably should
     allow account to be passed in and find any non-owner, non-group account
     currently associated with the file. As a default, it could use Users."""
-    return win32security.LookupAccountName(None, 'Users')[0]
+    return win32security.ConvertStringSidToSid("S-1-5-32-545")
 
 
 def convert_win_to_stat(win_perm, user_type, object_type):
