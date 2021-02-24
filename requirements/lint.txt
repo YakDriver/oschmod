@@ -1,2 +1,2 @@
 flake8==3.8.4
-pylint==2.7.0
+pylint==2.7.1
