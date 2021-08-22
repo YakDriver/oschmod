@@ -361,7 +361,11 @@ def win_get_permissions(path):
     """Get the file or dir permissions."""
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
-    str_path = _win_transform_pathlib_to_str(path)
+    
+    if isinstance(path, str):
+        str_path = path        
+    else:
+        str_path = _win_transform_pathlib_to_str(path)
 
     return _win_get_permissions(str_path, get_object_type(path))
 
@@ -401,7 +405,11 @@ def win_set_permissions(path, mode):
     """Set the file or dir permissions."""
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
-    str_path = _win_transform_pathlib_to_str(path)
+
+    if isinstance(path, str):
+        str_path = path        
+    else:
+        str_path = _win_transform_pathlib_to_str(path)
 
     _win_set_permissions(str_path, mode, get_object_type(path))
 

@@ -7,18 +7,37 @@ import oschmod
 
 @mock.patch('oschmod._win_get_permissions')
 @mock.patch('oschmod._win_transform_pathlib_to_str')
-def test_win_get_permissions(transform_mock, get_permissions_mock):
+def test_win_get_permissions_string_path(transform_mock, get_permissions_mock):
     oschmod.win_get_permissions('.')
 
-    transform_mock.assert_called_once_with('.')
+    transform_mock.assert_not_called()
 
 
 @mock.patch('oschmod._win_set_permissions')
 @mock.patch('oschmod._win_transform_pathlib_to_str')
-def test_win_set_permissions(transform_mock, set_permissions_mock):
-    oschmod.win_set_permissions('.', "mock_mode")
+def test_win_set_permissions_string_path(transform_mock, set_permissions_mock):
+    oschmod.win_set_permissions('.', 'mock_mode')
 
-    transform_mock.assert_called_once_with('.')
+    transform_mock.assert_not_called()
+
+@mock.patch('oschmod._win_get_permissions')
+@mock.patch('oschmod._win_transform_pathlib_to_str')
+def test_win_get_permissions_path(transform_mock, get_permissions_mock):
+    mock_path = mock.MagicMock()
+
+    oschmod.win_get_permissions(mock_path)
+
+    transform_mock.assert_called_once_with(mock_path)
+
+
+@mock.patch('oschmod._win_set_permissions')
+@mock.patch('oschmod._win_transform_pathlib_to_str')
+def test_win_set_permissions_path(transform_mock, set_permissions_mock):
+    mock_path = mock.MagicMock()
+
+    oschmod.win_set_permissions(mock_path, 'mock_mode')
+
+    transform_mock.assert_called_once_with(mock_path)
 
 
 @mock.patch('oschmod.sys')
