@@ -31,7 +31,9 @@ import random
 import re
 import stat
 import string
+import sys
 
+PATHLIB_ERROR = "Pathlib not supported for <py34. Version found: {}"
 IS_WINDOWS = platform.system() == 'Windows'
 HAS_PYWIN32 = False
 try:
@@ -335,7 +337,6 @@ def convert_stat_to_win(mode, user_type, object_type):
 
     return win_perm
 
-
 def win_get_user_type(sid, sids):
     """Given object and SIDs, return user type."""
     if sid == sids[OWNER]:
@@ -360,8 +361,9 @@ def win_get_permissions(path):
     """Get the file or dir permissions."""
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
+    str_path = _win_transform_pathlib_to_str(path)
 
-    return _win_get_permissions(path, get_object_type(path))
+    return _win_get_permissions(str_path, get_object_type(path))
 
 
 def _get_basic_symbol_to_mode(symbol):
@@ -399,8 +401,9 @@ def win_set_permissions(path, mode):
     """Set the file or dir permissions."""
     if not os.path.exists(path):
         raise FileNotFoundError('Path %s could not be found.' % path)
+    str_path = _win_transform_pathlib_to_str(path)
 
-    _win_set_permissions(path, mode, get_object_type(path))
+    _win_set_permissions(str_path, mode, get_object_type(path))
 
 
 def _win_set_permissions(path, mode, object_type):
@@ -445,6 +448,22 @@ def _win_set_permissions(path, mode, object_type):
     sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(
         path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+
+
+def _win_transform_pathlib_to_str(path):
+    """Transform pathlib.WindowsPath to a string to support win32security
+    operations when getting and setting permissions.
+    """
+    # pathlib not available for <py34, primarily covering for py27
+    # sys.version_info implemented differently in py26 so use string.find()
+    py_version = sys.version
+    if py_version.startswith("2.6"):
+        raise RuntimeError(PATHLIB_ERROR.format(py_version))
+    elif sys.version_info.major < 3:
+        raise RuntimeError(PATHLIB_ERROR.format(py_version))
+    elif sys.version_info.minor < 4:
+        raise RuntimeError(PATHLIB_ERROR.format(py_version))
+    return "{}".format(path)
 
 
 def print_win_inheritance(flags):
