@@ -1,2 +1,3 @@
+mock==4.0.3
 pytest==6.1.2
 pywin32==301;platform_system=="Windows"
