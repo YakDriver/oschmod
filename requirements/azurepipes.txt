@@ -1,1 +1,1 @@
-pytest-azurepipelines==0.8.0
+pytest-azurepipelines==1.0.4
