@@ -1,2 +1,2 @@
 pytest==6.1.2
-pywin32==301;platform_system=="Windows"
+pywin32==305;platform_system=="Windows"
