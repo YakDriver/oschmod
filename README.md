@@ -1,13 +1,12 @@
 <p>
     <a href="./LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/YakDriver/oschmod.svg" /></a>
-    <a href="http://travis-ci.org/YakDriver/oschmod" alt="Build status">
-        <img src="https://travis-ci.org/YakDriver/oschmod.svg?branch=main" /></a>
+    <a href="https://github.com/YakDriver/oschmod/actions/workflows/ci.yml" alt="Build status">
+        <img src="https://github.com/YakDriver/oschmod/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
     <a href="https://pypi.python.org/pypi/oschmod" alt="Python versions">
         <img src="https://img.shields.io/pypi/pyversions/oschmod.svg" /></a>
     <a href="https://pypi.python.org/pypi/oschmod" alt="Version">
         <img src="https://img.shields.io/pypi/v/oschmod.svg" /></a>
-    <img src="https://img.shields.io/endpoint.svg?url=https://gh.mergify.io/badges/YakDriver/oschmod" alt="Mergify"/>
 </p>
 
 # oschmod
@@ -31,6 +30,14 @@ Prior to ***oschmod***, Windows file permissions couldn't be set in the familiar
 $ pip install oschmod
 ```
 
+Or with conda:
+
+```console
+$ conda install -c conda-forge oschmod
+```
+
+***oschmod*** requires Python 3.11 or newer. On Windows, it depends on `pywin32`, which is installed automatically.
+
 ## GNU Documentation
 
 ***oschmod*** changes the file mode bits of each given file according to mode, which can be either a symbolic representation of changes to make, or an octal number representing the bit pattern for the new mode bits.
@@ -47,18 +54,25 @@ A combination of the letters `ugoa` controls which users' access to the file wil
 
 ```console
 $ oschmod -h
-usage: oschmod [-h] [-R] mode object
+usage: oschmod [-h] [-R] [-v] [--other-sid SID] [--version] mode object
 
 Change the mode (permissions) of a file or directory
 
 positional arguments:
-  mode        octal or symbolic mode of the object
-  object      file or directory
+  mode             octal or symbolic mode of the object
+  object           file or directory
 
-optional arguments:
-  -h, --help  show this help message and exit
-  -R          apply mode recursively
+options:
+  -h, --help       show this help message and exit
+  -R               apply mode recursively
+  -v               verbose: show each object as its mode is set; repeat (-vv)
+                   to also show old and new modes
+  --other-sid SID  Windows only: SID that receives "other" permissions
+                   (default: S-1-5-32-545, the built-in Users group)
+  --version        show program's version number and exit
 ```
+
+You can also run it as `python -m oschmod`.
 
 ## Command line examples
 
@@ -115,12 +129,22 @@ $ oschmod 777 <file name>
 $ oschmod 700 <file name>
 ```
 
+### Verbose output
+
+**Example 7:** Show each object as its mode is set (`-v`), or show old and new modes too (`-vv`):
+
+```console
+$ oschmod -vv 600 secrets.txt
+secrets.txt: 0o644 (rw-r--r--) -> 0o600 (rw-------)
+```
+
 ## Python usage
 
 You can use ***oschmod*** from Python code. Any of the command line examples above will work very similarly. For example, *Example 4* above, in Python code, would look like this:
 
 ```python
 import oschmod
+
 oschmod.set_mode("myfile", "a+rwx,g-w,o-x")
 ```
 
@@ -128,6 +152,7 @@ oschmod.set_mode("myfile", "a+rwx,g-w,o-x")
 
 ```python
 import oschmod
+
 oschmod.set_mode("myfile", "777")
 oschmod.set_mode("myfile", 0o777)
 ```
@@ -137,7 +162,8 @@ oschmod.set_mode("myfile", 0o777)
 ```python
 import oschmod
 import stat
-oschmod.set_mode('myfile', stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
+oschmod.set_mode("myfile", stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 ```
 
 Replacing `os.chmod()` with ***oschmod*** should usually be an easy drop-in replacement. Replacement will allow you to get consistent file permission settings on Windows, macOS, and Linux:
@@ -146,14 +172,35 @@ If this is your Python code using `os.chmod()`:
 
 ```python
 import os
-os.chmod('myfile1', 'u+x')
-os.chmod('myfile2', 0o777)
+
+os.chmod("myfile1", "u+x")
+os.chmod("myfile2", 0o777)
 ```
 
 The replacement using ***oschmod*** is very similar:
 
 ```python
 import oschmod
-oschmod.set_mode('myfile1', 'u+x')
-oschmod.set_mode('myfile2', 0o777)
+
+oschmod.set_mode("myfile1", "u+x")
+oschmod.set_mode("myfile2", 0o777)
 ```
+
+Paths can be strings or any path-like object, such as `pathlib.Path`:
+
+```python
+from pathlib import Path
+
+import oschmod
+
+oschmod.set_mode(Path("myfile"), 0o600)
+```
+
+## Windows notes
+
+Windows has no owner/group/other mode bits, so ***oschmod*** maps them to ACL entries:
+
+* **Owner** is the file's owner SID, and **group** is the file's primary group SID.
+* **Others** is the built-in *Users* group (`S-1-5-32-545`) by default. To use a different account, pass `other_sid` (for example, `"S-1-5-11"` for *Authenticated Users*). In Python, use `oschmod.set_mode(path, "o+r", other_sid="S-1-5-11")`; on the command line, use `--other-sid S-1-5-11`.
+* Setting a mode replaces the object's DACL and **disables inheritance**, so the result is predictable. Any existing entry for the local SYSTEM account is kept.
+* `ACCESS_DENIED` entries are not considered when reading a mode.
