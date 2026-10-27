@@ -150,3 +150,14 @@ def test_unprotected_file_does_inherit(tmp_path):
         None,
     )
     assert auth_users in _ace_sids(child)
+
+
+def test_set_mode_on_dir_keeps_descendants_accessible(tmp_path):
+    """Protecting a directory's DACL must not strip inherited ACEs from children."""
+    top = tmp_path / "top"
+    deep = top / "a" / "b"
+    deep.mkdir(parents=True)
+    before = _ace_sids(deep)
+    oschmod.set_mode(top, 0o700)
+    assert deep.exists()
+    assert _ace_sids(deep) == before

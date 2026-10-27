@@ -579,15 +579,13 @@ def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any 
                 dacl.GetAclRevision(), win32security.NO_INHERITANCE, win_perm, sid
             )
 
-    win32security.SetNamedSecurityInfo(
-        path,
-        win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
-        None,
-        None,
-        dacl,
-        None,
+    # SetFileSecurity (unlike SetNamedSecurityInfo) does not re-propagate
+    # inheritance to descendants, so children of a directory keep their ACEs.
+    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
+    sec_des.SetSecurityDescriptorControl(
+        win32security.SE_DACL_PROTECTED, win32security.SE_DACL_PROTECTED
     )
+    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
 
 def _win_sid_display(sid: Any) -> Any:
