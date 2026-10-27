@@ -354,3 +354,13 @@ def test_symbolic_use(tmp_path):
         assert oschmod.get_mode(str(obj)) == 0o700
     for obj in (file1, file2):
         assert oschmod.get_mode(str(obj)) == 0o600
+
+
+@pytest.mark.parametrize("bad", [-1, 0o10000, 2**70, "777777777777777777777777", "17777"])
+def test_set_mode_rejects_out_of_range(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    oschmod.set_mode(path, 0o644)
+    with pytest.raises(ValueError, match="out of range"):
+        oschmod.set_mode(path, bad)
+    assert oschmod.get_mode(path) == 0o644

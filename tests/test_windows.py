@@ -61,3 +61,19 @@ def test_other_sid(file_path):
 def test_default_other_sid_is_users(file_path):
     oschmod.set_mode(file_path, 0o604)
     assert oschmod.USERS_SID in _ace_sids(file_path)
+
+
+@pytest.mark.parametrize("which", ["owner", "group", "system"])
+def test_other_sid_collision_rejected(file_path, which):
+    import win32security  # noqa: PLC0415
+
+    oschmod.set_mode(file_path, 0o644)
+    before = _ace_sids(file_path)
+    sid = {
+        "owner": lambda: win32security.ConvertSidToStringSid(oschmod.win_get_owner_sid(file_path)),
+        "group": lambda: win32security.ConvertSidToStringSid(oschmod.win_get_group_sid(file_path)),
+        "system": lambda: oschmod.SYSTEM_SID,
+    }[which]()
+    with pytest.raises(ValueError, match=which if which != "system" else "SYSTEM"):
+        oschmod.set_mode(file_path, 0o604, other_sid=sid)
+    assert _ace_sids(file_path) == before  # DACL untouched

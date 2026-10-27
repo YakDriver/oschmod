@@ -265,11 +265,13 @@ def _resolve_mode(path: str, mode: ModeType) -> int:
     """Convert int, octal-string, or symbolic mode into an int mode for path."""
     if isinstance(mode, bool) or not isinstance(mode, int | str):
         raise TypeError(f"mode must be int or str, not {type(mode).__name__}")
-    if isinstance(mode, int):
-        return mode
-    if "+" in mode or "-" in mode or "=" in mode:
-        return get_effective_mode(get_mode(path), mode)
-    return int(mode, 8)
+    if isinstance(mode, str):
+        if "+" in mode or "-" in mode or "=" in mode:
+            return get_effective_mode(get_mode(path), mode)
+        mode = int(mode, 8)
+    if not 0 <= mode <= 0o7777:
+        raise ValueError(f"mode {mode:#o} is out of range (0 to 0o7777)")
+    return mode
 
 
 def _iter_tree(path: str) -> Iterator[tuple[str, int]]:
@@ -427,6 +429,21 @@ def _win_system_sid() -> Any:
     return win32security.ConvertStringSidToSid(SYSTEM_SID)
 
 
+def _win_check_other_sid(sids: list[Any], system_sid: Any) -> None:
+    """Reject an explicit other_sid that collides with owner, group, or SYSTEM.
+
+    Such a SID cannot round-trip: reading the mode attributes its ACE to the
+    owner/group (or ignores it for SYSTEM), so "o" bits would be lost.
+    """
+    other = sids[OTHER]
+    for name, sid in (("owner", sids[OWNER]), ("group", sids[GROUP]), ("SYSTEM", system_sid)):
+        if other == sid:
+            raise ValueError(
+                f"other_sid {win32security.ConvertSidToStringSid(other)} is the object's "
+                f"{name} SID; choose a different account for 'other' permissions"
+            )
+
+
 def convert_win_to_stat(win_perm: int, user_type: int, object_type: int) -> int:
     """Given Win perm and user type, give stat mode."""
     mode = 0
@@ -521,6 +538,9 @@ def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any 
     )
     dacl = sec_des.GetSecurityDescriptorDacl()
     system_sid = _win_system_sid()
+    sids = win_get_object_sids(path, other_sid)
+    if other_sid is not None:
+        _win_check_other_sid(sids, system_sid)
 
     system_ace = None
     for _ in range(dacl.GetAceCount()):
@@ -533,8 +553,6 @@ def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any 
         dacl.AddAccessAllowedAceEx(
             dacl.GetAclRevision(), win32security.NO_INHERITANCE, system_ace[1], system_ace[2]
         )
-
-    sids = win_get_object_sids(path, other_sid)
 
     for user_type, sid in enumerate(sids):
         win_perm = convert_stat_to_win(mode, user_type, object_type)

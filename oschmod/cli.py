@@ -10,7 +10,13 @@ from collections.abc import Sequence
 import oschmod
 
 # pywintypes.error derives from Exception, not OSError, so include it explicitly.
-_ERRORS: tuple[type[Exception], ...] = (OSError, ValueError, AttributeError, TypeError)
+_ERRORS: tuple[type[Exception], ...] = (
+    OSError,
+    ValueError,
+    OverflowError,
+    AttributeError,
+    TypeError,
+)
 if sys.platform == "win32":
     # pywin32 is a required dependency on Windows (import oschmod fails without it).
     from pywintypes import error as _pywinerror

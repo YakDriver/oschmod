@@ -86,3 +86,8 @@ def test_invalid_other_sid(tree, capsys):
     assert oschmod.cli.main(["--other-sid", "not-a-sid", "600", str(target)]) == 1
     assert capsys.readouterr().err.startswith("oschmod:")
     assert oschmod.get_mode(target) == 0o644  # DACL not written
+
+
+def test_oversized_mode(tree, capsys):
+    assert oschmod.cli.main(["777777777777777777777777", str(tree / "a")]) == 1
+    assert "out of range" in capsys.readouterr().err
