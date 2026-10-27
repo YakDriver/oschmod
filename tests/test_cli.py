@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import oschmod
-from oschmod import cli
+import oschmod.cli
 
 
 @pytest.fixture
@@ -20,18 +20,18 @@ def tree(tmp_path: Path) -> Path:
 
 
 def test_set_mode(tree):
-    assert cli.main(["600", str(tree / "a")]) == 0
+    assert oschmod.cli.main(["600", str(tree / "a")]) == 0
     assert oschmod.get_mode(tree / "a") == 0o600
 
 
 def test_recursive(tree):
-    assert cli.main(["-R", "u=rwx,go=", str(tree)]) == 0
+    assert oschmod.cli.main(["-R", "u=rwx,go=", str(tree)]) == 0
     for obj in (tree, tree / "sub", tree / "a", tree / "sub" / "b"):
         assert oschmod.get_mode(obj) == 0o700
 
 
 def test_verbose_lists_objects(tree, capsys):
-    assert cli.main(["-v", "-R", "700", str(tree)]) == 0
+    assert oschmod.cli.main(["-v", "-R", "700", str(tree)]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[-1] == str(tree)  # root is set last
     assert sorted(lines) == sorted(
@@ -42,28 +42,28 @@ def test_verbose_lists_objects(tree, capsys):
 def test_very_verbose_shows_modes(tree, capsys):
     target = tree / "a"
     oschmod.set_mode(target, 0o644)
-    assert cli.main(["-vv", "600", str(target)]) == 0
+    assert oschmod.cli.main(["-vv", "600", str(target)]) == 0
     assert capsys.readouterr().out.strip() == f"{target}: 0o644 (rw-r--r--) -> 0o600 (rw-------)"
 
 
 def test_quiet_by_default(tree, capsys):
-    assert cli.main(["600", str(tree / "a")]) == 0
+    assert oschmod.cli.main(["600", str(tree / "a")]) == 0
     assert capsys.readouterr().out == ""
 
 
 def test_missing_file(tmp_path, capsys):
-    assert cli.main(["600", str(tmp_path / "missing")]) == 1
+    assert oschmod.cli.main(["600", str(tmp_path / "missing")]) == 1
     assert "could not be found" in capsys.readouterr().err
 
 
 def test_bad_mode(tree, capsys):
-    assert cli.main(["u+q", str(tree / "a")]) == 1
+    assert oschmod.cli.main(["u+q", str(tree / "a")]) == 1
     assert capsys.readouterr().err.startswith("oschmod:")
 
 
 def test_version(capsys):
     with pytest.raises(SystemExit) as exc:
-        cli.main(["--version"])
+        oschmod.cli.main(["--version"])
     assert exc.value.code == 0
     assert oschmod.__version__ in capsys.readouterr().out
 
@@ -77,3 +77,12 @@ def test_python_dash_m(tree):
     )
     assert result.returncode == 0, result.stderr
     assert oschmod.get_mode(tree / "a") == 0o640
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows SID handling")
+def test_invalid_other_sid(tree, capsys):
+    target = tree / "a"
+    oschmod.set_mode(target, 0o644)
+    assert oschmod.cli.main(["--other-sid", "not-a-sid", "600", str(target)]) == 1
+    assert capsys.readouterr().err.startswith("oschmod:")
+    assert oschmod.get_mode(target) == 0o644  # DACL not written

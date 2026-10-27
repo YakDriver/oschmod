@@ -9,6 +9,15 @@ from collections.abc import Sequence
 
 import oschmod
 
+# pywintypes.error derives from Exception, not OSError, so include it explicitly.
+_ERRORS: tuple[type[Exception], ...] = (OSError, ValueError, AttributeError, TypeError)
+try:
+    from pywintypes import error as _pywinerror
+
+    _ERRORS += (_pywinerror,)
+except ImportError:
+    pass
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -67,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _apply(path, args.mode, args.verbose, args.other_sid)
         else:
             _apply(obj, args.mode, args.verbose, args.other_sid)
-    except (OSError, ValueError, AttributeError, TypeError) as exc:
+    except _ERRORS as exc:
         print(f"oschmod: {exc}", file=sys.stderr)
         return 1
     return 0

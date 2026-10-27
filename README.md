@@ -15,7 +15,7 @@
 
 ## oschmod TL;DR
 
-***oschmod*** brings `chmod` functionality to **Windows**, macOS, and Linux! If you're not familiar, `chmod` is a handy macOS and Linux-only tool for setting file permissions. 
+***oschmod*** brings `chmod` functionality to **Windows**, macOS, and Linux! If you're not familiar, `chmod` is a handy macOS and Linux-only tool for setting file permissions.
 
 Prior to ***oschmod***, Windows file permissions couldn't be set in the familiar `chmod` way. Tools did not translate `chmod`-style permissions into Windows-style file permissions. Even though Python's `os.chmod()` sets read, write, and execute file permissions, on Windows, `os.chmod()` basically has no effect. Even worse, Python on Windows gives no warnings or errors. If you think you set file permissions on Windows with `os.chmod()`, you're wrong!
 
@@ -76,12 +76,12 @@ You can also run it as `python -m oschmod`.
 
 ## Command line examples
 
-You can use symbolic (e.g., "u+rw") or octal (e.g., "600) representations of modes. Multiple mode modifications can be made in a single call by separating modifiers with commas.
+You can use symbolic (e.g., "u+rw") or octal (e.g., "600") representations of modes. Multiple mode modifications can be made in a single call by separating modifiers with commas.
 
 ### Symbolic representation examples
 
 Symbolic representation mode modifiers have three parts:
-    
+
 1. **whom:** To whom does the modification apply? You can include zero or more of `[ugoa]*` where `a` is for all, `u` is for the file owner (i.e., "**u**ser"), `g` is for the file group, and `o` is for others. In other words, `ugo` is equivalent to `a`. Also, if you do not provide a "whom," ***oschmod*** assumes you mean `a` (everyone).
 2. **operation:** Which operation should be applied? You must include one and only one operation, `[+-=]{1}`, per modifier (although you can have multiple modifiers). `+` adds permissions, `-` removes permissions, and `=` sets permissions regardless of previous permissions. `+` and `-` modifications often depend on the current permissions.
 3. **permission:** Which permission or permissions will be affected? You can include zero or more of `[rwx]*` where `r` is for read, `w` is for write, and `x` is for execute. If you do not include a permission with `+` or `-` (e.g., `u-`), the modifier has no effect. However, if you use no permissions with `=` (e.g., `o=`), all permissions are removed.
