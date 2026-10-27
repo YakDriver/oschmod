@@ -11,12 +11,11 @@ import oschmod
 
 # pywintypes.error derives from Exception, not OSError, so include it explicitly.
 _ERRORS: tuple[type[Exception], ...] = (OSError, ValueError, AttributeError, TypeError)
-try:
+if sys.platform == "win32":
+    # pywin32 is a required dependency on Windows (import oschmod fails without it).
     from pywintypes import error as _pywinerror
 
     _ERRORS += (_pywinerror,)
-except ImportError:
-    pass
 
 
 def _build_parser() -> argparse.ArgumentParser:
