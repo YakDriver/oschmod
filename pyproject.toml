@@ -1,0 +1,121 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oschmod"
+dynamic = ["version"]
+description = "Consistent chmod-style file permissions on Windows, macOS, and Linux"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "YakDriver", email = "dirk.avery@GEEmail.com" }]
+requires-python = ">=3.11"
+dependencies = [
+    # Library runtime dependency: lower bound only, so downstream users can resolve.
+    "pywin32>=311; sys_platform == 'win32'",
+]
+keywords = ["chmod", "permissions", "windows", "acl", "file mode"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: System :: Filesystems",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = [
+    "bump-my-version==1.6.7",
+    "mypy==2.4.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.3",
+]
+
+[project.scripts]
+oschmod = "oschmod.cli:main"
+ochmod = "oschmod.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/YakDriver/oschmod"
+Issues = "https://github.com/YakDriver/oschmod/issues"
+Changelog = "https://github.com/YakDriver/oschmod/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "oschmod/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["oschmod", "tests", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["oschmod"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+
+[tool.coverage.run]
+source = ["oschmod"]
+branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "C4",       # comprehensions
+    "PTH",      # prefer pathlib in new code
+    "S",        # bandit (security)
+    "D",        # pydocstyle
+    "PL",       # pylint subset
+    "RUF",
+]
+ignore = [
+    "D203", "D213",  # conflicting pydocstyle rules; use D211/D212
+    "PTH",           # os.path is used deliberately for str/PathLike inputs in the library
+    "PLR2004",       # magic numbers are bit masks here
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S311", "S603", "D", "PLR0915"]
+"oschmod/__init__.py" = ["S311"]  # perm_test uses random only for a throwaway filename
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = false
+
+[[tool.mypy.overrides]]
+module = ["win32security", "ntsecuritycon", "pywintypes"]
+ignore_missing_imports = true
+
+[tool.bumpversion]
+current_version = "0.4.0"
+commit = false
+tag = false
+
+[[tool.bumpversion.files]]
+filename = "oschmod/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

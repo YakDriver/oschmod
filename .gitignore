@@ -130,3 +130,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.venv/
