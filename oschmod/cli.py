@@ -57,10 +57,10 @@ def _format_mode(mode: int) -> str:
 
 def _apply(path: str, mode: str, verbose: int, other_sid: str | None) -> None:
     """Set mode on a single object, reporting according to verbosity."""
-    old_mode = oschmod.get_mode(path) if verbose > 1 else 0
+    old_mode = oschmod.get_full_mode(path) if verbose > 1 else 0
     oschmod.set_mode(path, mode, other_sid)
     if verbose > 1:
-        new_mode = oschmod.get_mode(path)
+        new_mode = oschmod.get_full_mode(path)
         print(f"{path}: {_format_mode(old_mode)} -> {_format_mode(new_mode)}")
     elif verbose:
         print(path)

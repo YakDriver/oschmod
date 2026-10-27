@@ -217,6 +217,8 @@ STAT_KEYS: Final = (
 )
 
 _PERM_MASK: Final = stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
+_SPECIAL_MASK: Final = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
+_FULL_MASK: Final = _PERM_MASK | _SPECIAL_MASK
 
 
 def _fspath(path: PathType) -> str:
@@ -237,6 +239,17 @@ def get_mode(path: PathType) -> int:
     if IS_WINDOWS:
         return win_get_permissions(path)
     return os.stat(path).st_mode & _PERM_MASK
+
+
+def get_full_mode(path: PathType) -> int:
+    """Get mode including set-user-ID, set-group-ID, and sticky bits (up to 0o7777).
+
+    Same as :func:`get_mode` on Windows, which has no equivalent of these bits.
+    """
+    path = _fspath(path)
+    if IS_WINDOWS:
+        return win_get_permissions(path)
+    return os.stat(path).st_mode & _FULL_MASK
 
 
 def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
@@ -267,7 +280,10 @@ def _resolve_mode(path: str, mode: ModeType) -> int:
         raise TypeError(f"mode must be int or str, not {type(mode).__name__}")
     if isinstance(mode, str):
         if "+" in mode or "-" in mode or "=" in mode:
-            return get_effective_mode(get_mode(path), mode)
+            # Symbolic modifiers change only rwx bits; keep any special bits as-is
+            # instead of silently clearing them.
+            current = get_full_mode(path)
+            return get_effective_mode(current & _PERM_MASK, mode) | (current & _SPECIAL_MASK)
         mode = int(mode, 8)
     if not 0 <= mode <= 0o7777:
         raise ValueError(f"mode {mode:#o} is out of range (0 to 0o7777)")
@@ -370,9 +386,11 @@ def get_effective_mode(current_mode: int, symbolic: str) -> int:
 
 
 def mode_to_symbolic(mode: int) -> str:
-    """Return the ``ls``-style symbolic string for a mode, e.g. ``0o750`` -> ``"rwxr-x---"``."""
-    chars = "rwx"
-    return "".join(chars[i % 3] if mode & (1 << (8 - i)) else "-" for i in range(9))
+    """Return the ``ls``-style permission string, e.g. ``0o4755`` -> ``"rwsr-xr-x"``.
+
+    Set-user-ID, set-group-ID, and sticky bits are shown as ``s``/``S`` and ``t``/``T``.
+    """
+    return stat.filemode(mode & _FULL_MASK)[1:]
 
 
 def get_object_type(path: PathType) -> int:
@@ -527,12 +545,11 @@ def win_set_permissions(path: PathType, mode: int, other_sid: Any = None) -> Non
 
 def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any = None) -> None:
     """Set the permissions."""
-    # Overview of Windows inheritance:
-    # Get/SetNamedSecurityInfo  = Always includes inheritance
-    # Get/SetFileSecurity       = Can exclude/disable inheritance
-    # Here we read effective permissions with GetNamedSecurityInfo, i.e.,
-    # including inherited permissions. However, we'll set permissions with
-    # SetFileSecurity and NO_INHERITANCE, to disable inheritance.
+    # Read the effective DACL (including inherited ACEs), replace every ACE with
+    # explicit ones, and write it back as a *protected* DACL. Protection
+    # (SE_DACL_PROTECTED) stops ACEs from the parent being inherited later, e.g.
+    # when someone changes the parent folder's permissions. NO_INHERITANCE on
+    # each ACE only means it does not propagate to this object's children.
     sec_des = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
     )
@@ -562,8 +579,15 @@ def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any 
                 dacl.GetAclRevision(), win32security.NO_INHERITANCE, win_perm, sid
             )
 
-    sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+    win32security.SetNamedSecurityInfo(
+        path,
+        win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        dacl,
+        None,
+    )
 
 
 def _win_sid_display(sid: Any) -> Any:

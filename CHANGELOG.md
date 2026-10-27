@@ -11,8 +11,10 @@
 *   Fix exception on domain-joined Windows machines that cannot reach a domain controller. The SYSTEM account is now detected by its well-known SID instead of an account lookup ([#73](https://github.com/YakDriver/oschmod/issues/73)).
 *   Add `other_sid` to `set_mode()`/`set_mode_recursive()` and `--other-sid` to the CLI to choose which Windows account receives "other" permissions; defaults to the built-in Users group ([#8](https://github.com/YakDriver/oschmod/issues/8)).
 *   Add `-v`/`-vv` verbose output and `--version` to the CLI ([#36](https://github.com/YakDriver/oschmod/issues/36)). The CLI now prints an error and exits with status 1 instead of a traceback.
-*   Add `python -m oschmod`, `oschmod.mode_to_symbolic()`, type hints, and a `py.typed` marker. Type hints and CodeQL setup inspired by @joelvaneenwyk's fork.
+*   Add `python -m oschmod`, `oschmod.mode_to_symbolic()` (ls-style, including `s`/`t`), type hints, and a `py.typed` marker. Type hints and CodeQL setup inspired by @joelvaneenwyk's fork.
 *   Fix `set_mode_recursive()` ignoring `dir_mode=0`.
+*   Fix symbolic modes (e.g., `g+w`) clearing set-user-ID, set-group-ID, and sticky bits on macOS and Linux; they are now preserved. Add `get_full_mode()` to read them.
+*   On Windows, the DACL written by `set_mode()` is now marked protected, so later changes to the parent folder's permissions are no longer inherited.
 *   `set_mode()` now raises `TypeError` for unsupported mode types instead of silently applying mode `0`, and `ValueError` for numeric modes outside `0`–`0o7777`.
 *   On Windows, an explicit `other_sid` that matches the object's owner, primary group, or SYSTEM SID raises `ValueError`, because the resulting mode could not be read back correctly.
 *   Packaging moved to `pyproject.toml` (hatchling). CI moved from Travis CI and Azure Pipelines to GitHub Actions on Linux, macOS, and Windows. Releases publish to PyPI with Trusted Publishing.

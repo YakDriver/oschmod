@@ -91,3 +91,12 @@ def test_invalid_other_sid(tree, capsys):
 def test_oversized_mode(tree, capsys):
     assert oschmod.cli.main(["777777777777777777777777", str(tree / "a")]) == 1
     assert "out of range" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX special bits")
+def test_very_verbose_shows_special_bits(tree, capsys):
+    target = tree / "a"
+    oschmod.set_mode(target, 0o4755)
+    assert oschmod.cli.main(["-vv", "2750", str(target)]) == 0
+    out = capsys.readouterr().out.strip()
+    assert out == f"{target}: 0o4755 (rwsr-xr-x) -> 0o2750 (rwxr-s---)"

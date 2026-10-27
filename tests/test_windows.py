@@ -77,3 +77,76 @@ def test_other_sid_collision_rejected(file_path, which):
     with pytest.raises(ValueError, match=which if which != "system" else "SYSTEM"):
         oschmod.set_mode(file_path, 0o604, other_sid=sid)
     assert _ace_sids(file_path) == before  # DACL untouched
+
+
+def test_dacl_is_protected_from_parent_changes(tmp_path):
+    """After set_mode, ACEs added to the parent later must not be inherited."""
+    import ntsecuritycon  # noqa: PLC0415
+    import win32security  # noqa: PLC0415
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    child = parent / "child.txt"
+    child.write_text("x")
+    oschmod.set_mode(child, 0o600)
+
+    sec = win32security.GetFileSecurity(str(child), win32security.DACL_SECURITY_INFORMATION)
+    control, _ = sec.GetSecurityDescriptorControl()
+    assert control & win32security.SE_DACL_PROTECTED
+
+    # Grant Authenticated Users read on the parent, inheritable by files.
+    auth_users = "S-1-5-11"
+    parent_sec = win32security.GetNamedSecurityInfo(
+        str(parent), win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
+    )
+    dacl = parent_sec.GetSecurityDescriptorDacl()
+    dacl.AddAccessAllowedAceEx(
+        dacl.GetAclRevision(),
+        ntsecuritycon.OBJECT_INHERIT_ACE | ntsecuritycon.CONTAINER_INHERIT_ACE,
+        ntsecuritycon.FILE_GENERIC_READ,
+        win32security.ConvertStringSidToSid(auth_users),
+    )
+    win32security.SetNamedSecurityInfo(
+        str(parent),
+        win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        dacl,
+        None,
+    )
+
+    assert auth_users not in _ace_sids(child)
+    assert oschmod.get_mode(child) == 0o600
+
+
+def test_unprotected_file_does_inherit(tmp_path):
+    """Control for the test above: without oschmod, the parent ACE propagates."""
+    import ntsecuritycon  # noqa: PLC0415
+    import win32security  # noqa: PLC0415
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    child = parent / "child.txt"
+    child.write_text("x")
+    auth_users = "S-1-5-11"
+    parent_sec = win32security.GetNamedSecurityInfo(
+        str(parent), win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
+    )
+    dacl = parent_sec.GetSecurityDescriptorDacl()
+    dacl.AddAccessAllowedAceEx(
+        dacl.GetAclRevision(),
+        ntsecuritycon.OBJECT_INHERIT_ACE | ntsecuritycon.CONTAINER_INHERIT_ACE,
+        ntsecuritycon.FILE_GENERIC_READ,
+        win32security.ConvertStringSidToSid(auth_users),
+    )
+    win32security.SetNamedSecurityInfo(
+        str(parent),
+        win32security.SE_FILE_OBJECT,
+        win32security.DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        dacl,
+        None,
+    )
+    assert auth_users in _ace_sids(child)

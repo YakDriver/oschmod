@@ -186,6 +186,8 @@ oschmod.set_mode("myfile1", "u+x")
 oschmod.set_mode("myfile2", 0o777)
 ```
 
+`get_mode()` returns only the read/write/execute bits (`0o777`). On macOS and Linux, use `get_full_mode()` to also include set-user-ID, set-group-ID, and sticky bits (`0o7777`). Symbolic modes such as `g+w` change only read/write/execute bits and leave those special bits as they are.
+
 Paths can be strings or any path-like object, such as `pathlib.Path`:
 
 ```python
@@ -202,5 +204,6 @@ Windows has no owner/group/other mode bits, so ***oschmod*** maps them to ACL en
 
 * **Owner** is the file's owner SID, and **group** is the file's primary group SID.
 * **Others** is the built-in *Users* group (`S-1-5-32-545`) by default. To use a different account, pass `other_sid` (for example, `"S-1-5-11"` for *Authenticated Users*). In Python, use `oschmod.set_mode(path, "o+r", other_sid="S-1-5-11")`; on the command line, use `--other-sid S-1-5-11`.
-* Setting a mode replaces the object's DACL and **disables inheritance**, so the result is predictable. Any existing entry for the local SYSTEM account is kept.
+* Setting a mode replaces the object's DACL with explicit entries and marks it **protected**, so permissions are no longer inherited from the parent folder, including after later changes to the parent. Any existing entry for the local SYSTEM account is kept.
+* Set-user-ID, set-group-ID, and sticky bits have no Windows equivalent and are ignored there.
 * `ACCESS_DENIED` entries are not considered when reading a mode.

@@ -1,6 +1,7 @@
 """Tests for the oschmod library."""
 
 import stat
+import sys
 from pathlib import Path
 from random import randrange
 
@@ -95,7 +96,18 @@ def test_bad_symbolic():
 
 @pytest.mark.parametrize(
     ("mode", "expected"),
-    [(0o000, "---------"), (0o750, "rwxr-x---"), (0o644, "rw-r--r--"), (0o777, "rwxrwxrwx")],
+    [
+        (0o000, "---------"),
+        (0o750, "rwxr-x---"),
+        (0o644, "rw-r--r--"),
+        (0o777, "rwxrwxrwx"),
+        (0o4755, "rwsr-xr-x"),
+        (0o4644, "rwSr--r--"),
+        (0o2750, "rwxr-s---"),
+        (0o2740, "rwxr-S---"),
+        (0o1777, "rwxrwxrwt"),
+        (0o1776, "rwxrwxrwT"),
+    ],
 )
 def test_mode_to_symbolic(mode, expected):
     assert oschmod.mode_to_symbolic(mode) == expected
@@ -364,3 +376,24 @@ def test_set_mode_rejects_out_of_range(tmp_path, bad):
     with pytest.raises(ValueError, match="out of range"):
         oschmod.set_mode(path, bad)
     assert oschmod.get_mode(path) == 0o644
+
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX special bits")
+
+
+@posix_only
+def test_get_full_mode_includes_special_bits(tmp_path):
+    path = tmp_path / "f"
+    path.write_text("x")
+    oschmod.set_mode(path, 0o4755)
+    assert oschmod.get_mode(path) == 0o755
+    assert oschmod.get_full_mode(path) == 0o4755
+
+
+@posix_only
+def test_symbolic_preserves_special_bits(tmp_path):
+    directory = tmp_path / "d"
+    directory.mkdir()
+    oschmod.set_mode(directory, 0o1755)  # sticky bit
+    oschmod.set_mode(directory, "g+w,o-rx")
+    assert oschmod.get_full_mode(directory) == 0o1770
