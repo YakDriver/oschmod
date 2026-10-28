@@ -2,6 +2,9 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
+    # Bump exact dev pins, but don't raise lower bounds of runtime
+    # dependencies (e.g., pywin32>=311) for downstream users.
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: weekly
     groups:
