@@ -613,9 +613,19 @@ def _call(fail: ErrorHandler, path: str, apply: Callable[[Any], None], obj: Any)
         fail(path, exc)
 
 
-def _first_visit(walker: Any, dir_ref: Any, visited: set[tuple[int, int]]) -> bool:
-    """Record a directory when following links; False if already seen (a cycle)."""
-    key = walker.key(dir_ref)
+def _first_visit(
+    walker: Any, dir_ref: Any, visited: set[tuple[int, int]], path: str, fail: ErrorHandler
+) -> bool:
+    """Record a directory when following links.
+
+    Returns False if it was already seen (a cycle) or can't be identified (e.g.,
+    it was removed after listing); the latter is reported through ``fail``.
+    """
+    try:
+        key = walker.key(dir_ref)
+    except _OBJECT_ERRORS as exc:
+        fail(path, exc)
+        return False
     if key in visited:
         return False
     visited.add(key)
@@ -677,7 +687,7 @@ def _walk_apply(
                 fail(path, exc)
                 continue
 
-            if follow_symlinks and not _first_visit(walker, dir_ref, visited):
+            if follow_symlinks and not _first_visit(walker, dir_ref, visited, path, fail):
                 walker.close(dir_ref)
                 continue
 

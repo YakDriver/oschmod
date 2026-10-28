@@ -285,3 +285,32 @@ def test_cli_no_follow_file_and_dangling_links(tmp_path):
     assert oschmod.cli.main(["-R", "-P", "700", str(file_link)]) == 0
     assert oschmod.get_mode(target) == 0o644
     assert oschmod.cli.main(["-R", "-P", "700", str(dangling)]) == 0
+
+
+def test_cycle_check_error_is_reported_and_walk_continues(tmp_path, monkeypatch):
+    """A directory vanishing before cycle detection goes to on_error (Windows stats by path)."""
+    top = tmp_path / "t"
+    for name in ("a", "gone"):
+        (top / name).mkdir(parents=True)
+        (top / name / "f").write_text("x")
+    walker_cls = oschmod._WinWalker if sys.platform == "win32" else oschmod._PosixWalker
+    original_key = walker_cls.key
+    calls = {"n": 0}
+
+    def flaky_key(self, ref):
+        calls["n"] += 1
+        if calls["n"] == 2:  # first subdirectory opened after the root
+            raise FileNotFoundError(2, "No such file or directory")
+        return original_key(self, ref)
+
+    monkeypatch.setattr(walker_cls, "key", flaky_key)
+    errors: list[str] = []
+    oschmod.set_mode_recursive(
+        top, 0o600, 0o700, follow_symlinks=True, on_error=lambda p, _: errors.append(p)
+    )
+    assert len(errors) == 1
+    failed = Path(errors[0]).name
+    other = "a" if failed == "gone" else "gone"
+    assert oschmod.get_mode(top / other / "f") == 0o600  # sibling still processed
+    assert oschmod.get_mode(top / other) == 0o700
+    assert oschmod.get_mode(top) == 0o700  # ancestor still processed

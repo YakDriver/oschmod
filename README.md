@@ -152,7 +152,7 @@ With `-R`, symlinks found inside the tree are **not** followed, so nothing outsi
 * `-L`: follow every symlink, changing link targets wherever they are. Use this only for trees you control, for example a deployment directory that links to shared storage. Directory cycles are skipped.
 * `-P`: follow no symlinks; a symlink to a directory given on the command line is left alone.
 
-If an object can't be changed, ***oschmod*** prints an error, keeps going, and exits with status 1 at the end. A directory that can't be listed because of its current mode (e.g., `000`) gets its new mode first, so `oschmod -R u+rwX` can repair it.
+If an object can't be changed, ***oschmod*** prints an error, keeps going, and exits with status 1 at the end. A directory that can't be listed because of its current mode (e.g., `000`) gets its new mode first, so `oschmod -R u+rwx mydir` can repair it.
 
 ## Python usage
 
