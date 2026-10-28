@@ -17,7 +17,7 @@ When [reporting a bug][0] please include:
 *oschmod* could always use more documentation, whether as part of the official
 *oschmod* docs, in docstrings, or even on the web in blog posts, articles, and
 such. The official documentation is maintained within this project in
-docstrings or in the [docs][3] directory. Contributions are
+docstrings and the README. Contributions are
 welcome, and are made the same way as any other code.
 
 ## Feature Requests and Feedback
@@ -52,8 +52,14 @@ To set up *oschmod* for local development:
 
 4.  Now you can make your changes locally.
 
-5.  When you're done making changes, use Make to run the linters, the tests,
-    and the doc builder. (WIP)
+5.  Install in a virtual environment with development tools, then run the
+    linters, type checker, and tests:
+
+    ```shell
+    python -m venv .venv && . .venv/bin/activate
+    python -m pip install -e ".[dev]"
+    ruff check . && ruff format --check . && mypy oschmod && pytest
+    ```
 
 6.  Commit your changes and push your branch to GitHub:
 
@@ -72,10 +78,9 @@ open the pull request.
 
 For pull request acceptance, you should:
 
-1.  Make sure CI (e.g., Travis CI and AppVeyor) are successful
+1.  Make sure GitHub Actions CI passes (Linux, macOS, and Windows).
 2.  Update documentation whenever making changes to the API or functionality.
 3.  Add a note to `CHANGELOG.md` about the changes. Include a link to the
     pull request.
 
 [0]: https://github.com/yakdriver/oschmod/issues
-[1]: https://travis-ci.org/yakdriver/oschmod/pull_requests
