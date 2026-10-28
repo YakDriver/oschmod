@@ -193,8 +193,12 @@ def _link_dir(target: Path, link: Path) -> None:
         os.symlink(target, link, target_is_directory=True)
 
 
-def test_dir_swapped_for_link_during_walk_is_not_followed(tmp_path):
-    """A directory replaced by a link after it was listed must not be traversed."""
+def test_dir_swapped_for_link_during_walk_is_not_followed(tmp_path, monkeypatch):
+    """A directory replaced by a link after it was listed must not be traversed.
+
+    The swap is injected just before the walk opens the directory, which is
+    the race window: earlier checks on the listing entry already passed.
+    """
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "inner.txt").write_text("x")
@@ -204,23 +208,28 @@ def test_dir_swapped_for_link_during_walk_is_not_followed(tmp_path):
     tree = tmp_path / "tree"
     (tree / "z").mkdir(parents=True)
     (tree / "a.txt").write_text("x")
+
+    walker_cls = oschmod._WinWalker if sys.platform == "win32" else oschmod._PosixWalker
+    original_open_dir = walker_cls.open_dir
     swapped = False
 
-    def apply(obj):
+    def open_dir(self, parent, name):
         nonlocal swapped
-        if not swapped and obj.path.endswith("a.txt"):  # files are handled before subdirs open
+        if not swapped and os.path.basename(name) == "z":
             (tree / "z").rename(tmp_path / "z_old")
             _link_dir(outside, tree / "z")
             swapped = True
-        obj.set_mode(0o644 if obj.type == oschmod.FILE else 0o755)
+        return original_open_dir(self, parent, name)
 
+    monkeypatch.setattr(walker_cls, "open_dir", open_dir)
     errors: list[str] = []
-    oschmod._walk_apply(str(tree), apply, on_error=lambda p, _: errors.append(p))
+    oschmod.set_mode_recursive(tree, 0o644, 0o755, on_error=lambda p, _: errors.append(p))
     assert swapped
     assert oschmod.get_mode(outside / "inner.txt") == 0o600
     assert oschmod.get_mode(outside) == 0o700
     assert errors  # reported, not silently changed
     assert all(str(tree / "z") in p for p in errors)
+    assert oschmod.get_mode(tree / "a.txt") == 0o644
 
 
 def test_file_swapped_for_link_during_walk_is_not_followed(tmp_path):

@@ -398,9 +398,10 @@ class _PosixObj:
         else:
             try:
                 os.chmod(self._name, new_mode, dir_fd=self._dir_fd, follow_symlinks=False)
-            except NotImplementedError:
-                # Linux without fchmodat2 or glibc emulation (and glibc reports
-                # symlinks this way): use an O_PATH fd, which can't follow a link.
+            except (NotImplementedError, ValueError):
+                # Linux can't do this for symlinks (Python raises ValueError when
+                # dir_fd is used) or without fchmodat2/glibc emulation. Use an
+                # O_PATH fd, which can't follow a link, and report links.
                 self._chmod_o_path(new_mode)
 
     def _chmod_o_path(self, mode: int) -> None:
@@ -462,15 +463,20 @@ _WIN_SECURITY_INFO: Final = 0x7  # OWNER | GROUP | DACL _SECURITY_INFORMATION
 
 def _win_open(path: str, access: int) -> Any:
     """Open a file or directory handle (following links) for security operations."""
-    return win32file.CreateFile(
-        path,
-        access,
-        win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE | win32file.FILE_SHARE_DELETE,
-        None,
-        win32file.OPEN_EXISTING,
-        win32file.FILE_FLAG_BACKUP_SEMANTICS,
-        None,
-    )
+    try:
+        return win32file.CreateFile(
+            path,
+            access,
+            win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE | win32file.FILE_SHARE_DELETE,
+            None,
+            win32file.OPEN_EXISTING,
+            win32file.FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+    except pywinerror as exc:
+        # OSError picks the subclass (FileNotFoundError, PermissionError, ...)
+        # from the Windows error code.
+        raise OSError(0, exc.strerror, path, exc.winerror) from exc
 
 
 def _win_final_path(path: str) -> str:
