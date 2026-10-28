@@ -53,7 +53,8 @@ try:
 
     HAS_PYWIN32 = True
 except ImportError:
-    pass
+    # Expected on macOS/Linux; on Windows the check below raises instead.
+    HAS_PYWIN32 = False
 
 HAS_PWD = False
 try:
@@ -62,7 +63,8 @@ try:
 
     HAS_PWD = True
 except ImportError:
-    pass
+    # Expected on Windows, which has no pwd/grp modules.
+    HAS_PWD = False
 
 if IS_WINDOWS and not HAS_PYWIN32:
     raise ImportError("win32security and ntsecuritycon required on Windows")
