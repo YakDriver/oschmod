@@ -90,8 +90,27 @@ def test_set_mode_rejects_bad_type(tmp_path, bad):
 
 
 def test_bad_symbolic():
-    with pytest.raises(AttributeError):
+    with pytest.raises(oschmod.ModeError) as exc_info:
         oschmod.get_effective_mode(0o644, "u+q")
+    assert "u+q" in str(exc_info.value)
+    # ModeError is both a ValueError and an AttributeError, so existing
+    # callers that catch either exception type keep working.
+    assert isinstance(exc_info.value, ValueError)
+    assert isinstance(exc_info.value, AttributeError)
+
+
+def test_get_effective_mode_rejects_non_string():
+    with pytest.raises(TypeError):
+        oschmod.get_effective_mode(0o644, 123)
+
+
+def test_set_mode_rejects_bad_symbolic(tmp_path):
+    path = tmp_path / "f"
+    path.write_text("x")
+    oschmod.set_mode(path, 0o644)
+    with pytest.raises(oschmod.ModeError):
+        oschmod.set_mode(path, "u+q")
+    assert oschmod.get_mode(path) == 0o644  # unchanged
 
 
 @pytest.mark.parametrize(

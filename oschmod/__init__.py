@@ -44,6 +44,15 @@ PathType = str | os.PathLike[str]
 ModeType = int | str
 """Accepted mode input: an int (e.g., 0o755), octal string ("755"), or symbolic ("u+x")."""
 
+
+class ModeError(ValueError, AttributeError):
+    """Raised when a symbolic mode string is invalid.
+
+    Subclasses both ``ValueError`` and ``AttributeError`` so existing callers
+    that catch either exception type keep working unchanged.
+    """
+
+
 IS_WINDOWS: Final = platform.system() == "Windows"
 HAS_PYWIN32 = False
 try:
@@ -349,14 +358,14 @@ def _get_effective_mode_multiple(current_mode: int, modes: str) -> int:
 def get_effective_mode(current_mode: int, symbolic: str) -> int:
     """Get octal mode, given current mode and symbolic mode modifier."""
     if not isinstance(symbolic, str):
-        raise AttributeError("symbolic must be a string")
+        raise TypeError("symbolic must be a string")
 
     if "," in symbolic:
         return _get_effective_mode_multiple(current_mode, symbolic)
 
     result = re.search(r"^\s*([ugoa]*)([-+=])([rwx]*)\s*$", symbolic)
     if result is None:
-        raise AttributeError("bad format of symbolic representation modifier")
+        raise ModeError(f"invalid mode modifier '{symbolic}'")
 
     whom = result.group(1) or "ugo"
     operation = result.group(2)
