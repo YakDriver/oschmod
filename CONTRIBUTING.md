@@ -31,6 +31,20 @@ If you are proposing a feature:
 *   Remember that this is a community-driven, open-source project, and that
     code contributions are welcome. :)
 
+## Getting vouched
+
+*oschmod* uses [vouch](https://github.com/mitchellh/vouch) to cut down on
+low-effort and automated pull requests. Pull requests from authors who aren't
+listed in [`.github/VOUCHED.td`](.github/VOUCHED.td) are closed automatically
+with a link to this section. Issues are open to everyone.
+
+To get vouched:
+
+1.  [Open an issue][0] describing the bug or change you'd like to work on,
+    or comment on an existing issue saying you'd like to take it.
+2.  A maintainer will add you to `VOUCHED.td`.
+3.  Open your pull request, or reopen it if it was closed automatically.
+
 ## Development Guide
 
 To set up *oschmod* for local development:

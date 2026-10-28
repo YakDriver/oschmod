@@ -1,0 +1,28 @@
+# Close pull requests from authors who aren't in .github/VOUCHED.td.
+# Collaborators with write access and bots (e.g., Dependabot) are skipped.
+# See CONTRIBUTING.md ("Getting vouched") and https://github.com/mitchellh/vouch.
+name: Vouch
+
+on:
+  # pull_request_target runs in the base repo's context, so it can comment on and
+  # close fork PRs. It's safe here because no PR code is checked out or run: the
+  # action only reads the PR author and .github/VOUCHED.td from the default branch
+  # through the API.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, reopened]
+
+permissions: {}
+
+jobs:
+  check-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: mitchellh/vouch/action/check-pr@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          auto-close: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
