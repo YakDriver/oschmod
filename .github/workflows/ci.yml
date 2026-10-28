@@ -58,6 +58,25 @@ jobs:
           oschmod -vv 640 smoke.txt
           python -m oschmod --version
 
+  # Lowest supported Python + lowest declared pywin32, so the lower bound is tested.
+  test-min-deps:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install with pywin32 at its declared minimum
+        shell: bash
+        run: |
+          min=$(python -c 'import re,tomllib; d=tomllib.load(open("pyproject.toml","rb")); print(next(re.search(r"pywin32>=([0-9]+)", x)[1] for x in d["project"]["dependencies"] if x.startswith("pywin32")))')
+          echo "pywin32 minimum: $min"
+          python -m pip install -e ".[dev]" "pywin32==$min"
+          python -m pip show pywin32 | grep -x "Version: $min"
+      - run: python -m pytest
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +98,7 @@ jobs:
   # Single required check for branch protection.
   ci-ok:
     if: always()
-    needs: [lint, test, build]
+    needs: [lint, test, test-min-deps, build]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled

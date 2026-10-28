@@ -17,7 +17,7 @@
 *   On Windows, the DACL written by `set_mode()` is now marked protected, so later changes to the parent folder's permissions are no longer inherited.
 *   `set_mode()` now raises `TypeError` for unsupported mode types instead of silently applying mode `0`, and `ValueError` for numeric modes outside `0`–`0o7777`.
 *   On Windows, an explicit `other_sid` that matches the object's owner, primary group, or SYSTEM SID raises `ValueError`, because the resulting mode could not be read back correctly.
-*   Packaging moved to `pyproject.toml` (hatchling). CI moved from Travis CI and Azure Pipelines to GitHub Actions on Linux, macOS, and Windows. Releases publish to PyPI with Trusted Publishing.
+*   Packaging moved to `pyproject.toml` (hatchling). CI moved from Travis CI and Azure Pipelines to GitHub Actions on Linux, macOS, and Windows, including a job that tests the minimum supported pywin32 (311). Releases publish to PyPI with Trusted Publishing.
 
 ### 0.3.1–0.3.12
 
