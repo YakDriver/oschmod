@@ -4,7 +4,7 @@
 
 **Summary**:
 
-*   Invalid symbolic modes now raise a new `oschmod.ModeError` (a subclass of both `ValueError` and `AttributeError`) instead of a surprising `AttributeError`, and non-string modes raise `TypeError` instead of `AttributeError` ([#191](https://github.com/YakDriver/oschmod/issues/191)). Thanks @hamid-digitalmarketer.
+*   Invalid symbolic modes now raise a new `oschmod.ModeError` (a subclass of both `ValueError` and `AttributeError`) instead of a surprising `AttributeError`, and non-string modes raise `TypeError` instead of `AttributeError` ([#191](https://github.com/YakDriver/oschmod/issues/191), [#200](https://github.com/YakDriver/oschmod/pull/200)). Thanks @hamid-digitalmarketer.
 
 ### 0.4.0
 
