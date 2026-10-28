@@ -161,3 +161,69 @@ def test_set_mode_on_dir_keeps_descendants_accessible(tmp_path):
     oschmod.set_mode(top, 0o700)
     assert deep.exists()
     assert _ace_sids(deep) == before
+
+
+def test_recursive_skips_junctions(tmp_path):
+    """Junctions are reparse points, not symlinks, but must be skipped too (#183)."""
+    import _winapi  # noqa: PLC0415
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "inner.txt").write_text("x")
+    oschmod.set_mode(target / "inner.txt", 0o600)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    _winapi.CreateJunction(str(target), str(tree / "junction"))
+
+    oschmod.set_mode_recursive(tree, 0o644, 0o755)
+    assert oschmod.get_mode(target / "inner.txt") == 0o600
+
+    oschmod.set_mode_recursive(tree, 0o644, 0o755, follow_symlinks=True)
+    assert oschmod.get_mode(target / "inner.txt") == 0o644
+
+
+def test_set_mode_follows_symlink_like_posix(tmp_path):
+    """set_mode/get_mode on a link act on the target, as os.chmod does on POSIX."""
+    import os  # noqa: PLC0415
+
+    target = tmp_path / "target.txt"
+    target.write_text("x")
+    link = tmp_path / "link.txt"
+    try:
+        os.symlink(target, link)
+    except OSError as exc:
+        pytest.skip(f"cannot create symlinks: {exc}")
+    oschmod.set_mode(target, 0o600)
+    oschmod.set_mode(link, 0o644)
+    assert oschmod.get_mode(target) == 0o644
+    assert oschmod.get_mode(link) == 0o644
+
+
+def test_sid_conflict_is_reported_per_object(tmp_path):
+    """SidConflictError depends on each object's owner, so -R reports and continues."""
+    import win32security  # noqa: PLC0415
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "sub" / "f.txt").write_text("x")
+    owner = win32security.ConvertSidToStringSid(oschmod.win_get_owner_sid(tree))
+    errors: list[Exception] = []
+    oschmod.set_mode_recursive(tree, 0o604, other_sid=owner, on_error=lambda _, e: errors.append(e))
+    assert len(errors) == 3
+    assert all(isinstance(e, oschmod.SidConflictError) for e in errors)
+    assert all(isinstance(e, ValueError) for e in errors)  # backward compatible
+
+
+def test_recursive_writes_protected_dacl(tmp_path):
+    """The handle-based walk (SetKernelObjectSecurity) still protects each DACL."""
+    import win32security  # noqa: PLC0415
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "sub" / "f.txt").write_text("x")
+    oschmod.set_mode_recursive(tree, 0o640, 0o750)
+    for obj, mode in ((tree / "sub" / "f.txt", 0o640), (tree / "sub", 0o750), (tree, 0o750)):
+        assert oschmod.get_mode(obj) == mode
+        sec = win32security.GetFileSecurity(str(obj), win32security.DACL_SECURITY_INFORMATION)
+        control, _ = sec.GetSecurityDescriptorControl()
+        assert control & win32security.SE_DACL_PROTECTED

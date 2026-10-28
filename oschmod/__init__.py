@@ -27,13 +27,15 @@ Paths may be given as ``str`` or any ``os.PathLike`` (e.g., ``pathlib.Path``).
 
 from __future__ import annotations
 
+import errno
+import functools
 import os
 import platform
 import random
 import re
 import stat
 import string
-from collections.abc import Iterator
+from collections.abc import Callable
 from typing import Any, Final
 
 __version__ = "0.4.0"
@@ -48,6 +50,7 @@ IS_WINDOWS: Final = platform.system() == "Windows"
 HAS_PYWIN32 = False
 try:
     import ntsecuritycon
+    import win32file
     import win32security
     from pywintypes import error as pywinerror
 
@@ -278,13 +281,18 @@ def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
 
 def _resolve_mode(path: str, mode: ModeType) -> int:
     """Convert int, octal-string, or symbolic mode into an int mode for path."""
+    return _resolve_mode_with(mode, lambda: get_full_mode(path))
+
+
+def _resolve_mode_with(mode: ModeType, current_mode: Callable[[], int]) -> int:
+    """Like :func:`_resolve_mode`; ``current_mode()`` is called only for symbolic modes."""
     if isinstance(mode, bool) or not isinstance(mode, int | str):
         raise TypeError(f"mode must be int or str, not {type(mode).__name__}")
     if isinstance(mode, str):
         if "+" in mode or "-" in mode or "=" in mode:
             # Symbolic modifiers change only rwx bits; keep any special bits as-is
             # instead of silently clearing them.
-            current = get_full_mode(path)
+            current = current_mode()
             return get_effective_mode(current & _PERM_MASK, mode) | (current & _SPECIAL_MASK)
         mode = int(mode, 8)
     if not 0 <= mode <= 0o7777:
@@ -292,29 +300,426 @@ def _resolve_mode(path: str, mode: ModeType) -> int:
     return mode
 
 
-def _iter_tree(path: str) -> Iterator[tuple[str, int]]:
-    """Yield (path, object type) for everything under path, bottom-up, path last."""
-    for root, dirs, files in os.walk(path, topdown=False):
-        for one_file in files:
-            yield os.path.join(root, one_file), FILE
-        for one_dir in dirs:
-            yield os.path.join(root, one_dir), DIRECTORY
-    yield path, DIRECTORY
+class SidConflictError(ValueError):
+    """An explicit ``other_sid`` is the object's owner, group, or SYSTEM SID (Windows).
+
+    This depends on the object, so recursive operations report it per object
+    (see ``on_error``) and continue.
+    """
 
 
-def set_mode_recursive(
+# Junctions are directory reparse points that os.DirEntry.is_symlink() doesn't
+# report (os.path.isjunction needs Python 3.12+).
+_IO_REPARSE_TAG_MOUNT_POINT: Final = 0xA0000003
+
+# Per-object errors that recursive operations report and skip past. Invalid
+# modes (ValueError, TypeError, AttributeError) are not included: they would
+# fail for every object.
+_OBJECT_ERRORS: tuple[type[Exception], ...] = (OSError, SidConflictError)
+if HAS_PYWIN32:
+    _OBJECT_ERRORS += (pywinerror,)
+
+ErrorHandler = Callable[[str, Exception], None]
+"""Callback for recursive operations: called with the path and the error."""
+
+
+def _is_junction(path: str) -> bool:
+    if not IS_WINDOWS:
+        return False
+    try:
+        return getattr(os.lstat(path), "st_reparse_tag", 0) == _IO_REPARSE_TAG_MOUNT_POINT
+    except OSError:
+        return False
+
+
+def _is_link(path: str) -> bool:
+    """Return True for a symlink (even dangling) or, on Windows, a junction."""
+    return os.path.islink(path) or _is_junction(path)
+
+
+def _not_followed(path: str, why: str = "is a symlink") -> OSError:
+    return OSError(errno.ELOOP, f"{why}; not followed", path)
+
+
+class _PathObj:
+    """An object addressed by path (follows symlinks, like os.chmod)."""
+
+    def __init__(self, path: str, obj_type: int) -> None:
+        self.path = path
+        self.type = obj_type
+
+    def get_full_mode(self) -> int:
+        return get_full_mode(self.path)
+
+    def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
+        set_mode(self.path, mode, other_sid)
+
+
+class _PosixObj:
+    """An object reached during a walk, addressed by fd or by (dir_fd, name).
+
+    With ``nofollow``, a symlink is never followed, even if one replaces the
+    object after it was listed: the stat and chmod are relative to the
+    already-open parent directory and don't follow the final component.
+    """
+
+    def __init__(  # noqa: PLR0913 (keyword-only addressing options)
+        self,
+        path: str,
+        obj_type: int,
+        *,
+        fd: int | None = None,
+        dir_fd: int | None = None,
+        name: str = "",
+        nofollow: bool = False,
+    ) -> None:
+        self.path = path
+        self.type = obj_type
+        self._fd = fd
+        self._dir_fd = dir_fd
+        self._name = name
+        self._nofollow = nofollow
+
+    def get_full_mode(self) -> int:
+        if self._fd is not None:
+            st = os.fstat(self._fd)
+        else:
+            st = os.stat(self._name, dir_fd=self._dir_fd, follow_symlinks=not self._nofollow)
+            if stat.S_ISLNK(st.st_mode):
+                raise _not_followed(self.path)
+        return st.st_mode & _FULL_MASK
+
+    def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
+        new_mode = _resolve_mode_with(mode, self.get_full_mode)
+        if self._fd is not None:
+            os.chmod(self._fd, new_mode)
+        elif not self._nofollow:
+            os.chmod(self._name, new_mode, dir_fd=self._dir_fd)
+        else:
+            try:
+                os.chmod(self._name, new_mode, dir_fd=self._dir_fd, follow_symlinks=False)
+            except (NotImplementedError, ValueError):
+                # Linux can't do this for symlinks (Python raises ValueError when
+                # dir_fd is used) or without fchmodat2/glibc emulation. Use an
+                # O_PATH fd, which can't follow a link, and report links.
+                self._chmod_o_path(new_mode)
+
+    def _chmod_o_path(self, mode: int) -> None:
+        o_path = getattr(os, "O_PATH", None)
+        if o_path is None:  # pragma: no cover - lchmod exists where O_PATH doesn't
+            raise NotImplementedError("no way to change mode without following symlinks")
+        fd = os.open(self._name, o_path | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self._dir_fd)
+        try:
+            if stat.S_ISLNK(os.fstat(fd).st_mode):
+                raise _not_followed(self.path)
+            os.chmod(f"/proc/self/fd/{fd}", mode)
+        finally:
+            os.close(fd)
+
+
+class _PosixWalker:
+    """Directory access for the walk on macOS/Linux, using directory fds."""
+
+    def __init__(self, follow_symlinks: bool) -> None:
+        self.follow = follow_symlinks
+
+    def open_dir(self, parent: int | None, name: str) -> tuple[int, list[os.DirEntry[str]]]:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+        if parent is not None and not self.follow:
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(name, flags, dir_fd=parent)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise _not_followed(name) from exc
+            raise
+        try:
+            with os.scandir(fd) as it:
+                return fd, list(it)
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def close(self, ref: int) -> None:
+        os.close(ref)
+
+    def key(self, ref: int) -> tuple[int, int]:
+        st = os.fstat(ref)
+        return st.st_dev, st.st_ino
+
+    def dir_obj(self, ref: int, path: str) -> _PosixObj:
+        return _PosixObj(path, DIRECTORY, fd=ref)
+
+    def named_obj(self, parent: int | None, name: str, path: str, obj_type: int) -> _PosixObj:
+        nofollow = parent is not None and not self.follow
+        return _PosixObj(path, obj_type, dir_fd=parent, name=name, nofollow=nofollow)
+
+    def is_link(self, entry: os.DirEntry[str]) -> bool:
+        return entry.is_symlink()
+
+
+_WIN_SECURITY_INFO: Final = 0x7  # OWNER | GROUP | DACL _SECURITY_INFORMATION
+
+
+def _win_open(path: str, access: int) -> Any:
+    """Open a file or directory handle (following links) for security operations."""
+    try:
+        return win32file.CreateFile(
+            path,
+            access,
+            win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE | win32file.FILE_SHARE_DELETE,
+            None,
+            win32file.OPEN_EXISTING,
+            win32file.FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+    except pywinerror as exc:
+        # OSError picks the subclass (FileNotFoundError, PermissionError, ...)
+        # from the Windows error code.
+        raise OSError(0, exc.strerror, path, exc.winerror) from exc
+
+
+def _win_final_path(path: str) -> str:
+    handle = _win_open(path, ntsecuritycon.READ_CONTROL)
+    try:
+        return str(os.path.normcase(win32file.GetFinalPathNameByHandle(handle, 0)))
+    finally:
+        handle.Close()
+
+
+class _WinObj:
+    """An object reached during a walk on Windows, changed through a handle.
+
+    Unless links are followed, the handle's final path must be inside the tree.
+    That check and the change use the same handle, so replacing the object or a
+    parent with a symlink or junction after it was listed can't redirect the
+    change outside the tree.
+    """
+
+    def __init__(self, path: str, obj_type: int, root_final: str | None) -> None:
+        self.path = path
+        self.type = obj_type
+        self._root_final = root_final
+
+    def _open(self, access: int) -> Any:
+        handle = _win_open(self.path, access)
+        if self._root_final is not None:
+            final = os.path.normcase(win32file.GetFinalPathNameByHandle(handle, 0))
+            root = self._root_final.rstrip("\\")
+            if final != root and not final.startswith(root + "\\"):
+                handle.Close()
+                raise _not_followed(self.path, "resolves outside the tree")
+        return handle
+
+    def get_full_mode(self) -> int:
+        handle = self._open(ntsecuritycon.READ_CONTROL)
+        try:
+            sec_des = win32security.GetKernelObjectSecurity(handle, _WIN_SECURITY_INFO)
+        finally:
+            handle.Close()
+        return _win_mode_from_sd(sec_des, self.type)
+
+    def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
+        handle = self._open(ntsecuritycon.READ_CONTROL | ntsecuritycon.WRITE_DAC)
+        try:
+            sec_des = win32security.GetKernelObjectSecurity(handle, _WIN_SECURITY_INFO)
+            new_mode = _resolve_mode_with(mode, lambda: _win_mode_from_sd(sec_des, self.type))
+            _win_update_sd(sec_des, new_mode, self.type, other_sid)
+            # Like SetFileSecurity, this doesn't re-propagate inheritance to children.
+            win32security.SetKernelObjectSecurity(
+                handle, win32security.DACL_SECURITY_INFORMATION, sec_des
+            )
+        finally:
+            handle.Close()
+
+
+class _WinWalker:
+    """Directory access for the walk on Windows (lists by path; see _WinObj)."""
+
+    def __init__(self, follow_symlinks: bool, root: str) -> None:
+        self.follow = follow_symlinks
+        self.root_final = None if follow_symlinks else _win_final_path(root)
+
+    def open_dir(self, parent: str | None, name: str) -> tuple[str, list[os.DirEntry[str]]]:
+        path = name if parent is None else os.path.join(parent, name)
+        with os.scandir(path) as it:
+            return path, list(it)
+
+    def close(self, ref: str) -> None:
+        pass
+
+    def key(self, ref: str) -> tuple[int, int]:
+        st = os.stat(ref)
+        return st.st_dev, st.st_ino
+
+    def dir_obj(self, ref: str, path: str) -> _WinObj:
+        return _WinObj(path, DIRECTORY, self.root_final)
+
+    def named_obj(self, parent: str | None, name: str, path: str, obj_type: int) -> _WinObj:
+        return _WinObj(path, obj_type, self.root_final)
+
+    def is_link(self, entry: os.DirEntry[str]) -> bool:
+        return entry.is_symlink() or _is_junction(entry.path)
+
+
+def _open_dir_or_repair(
+    walker: Any, apply: Callable[[Any], None], parent: Any, name: str, path: str
+) -> tuple[Any, list[os.DirEntry[str]], bool]:
+    """List a directory; if denied, apply its mode first and retry (#186).
+
+    Returns (dir ref, entries, whether the mode was applied).
+    """
+    try:
+        dir_ref, entries = walker.open_dir(parent, name)
+    except PermissionError:
+        apply(walker.named_obj(parent, name, path, DIRECTORY))
+        dir_ref, entries = walker.open_dir(parent, name)
+        return dir_ref, entries, True
+    return dir_ref, entries, False
+
+
+def _visit_entry(
+    walker: Any, apply: Callable[[Any], None], dir_ref: Any, entry: os.DirEntry[str], path: str
+) -> bool:
+    """Apply to a non-directory entry; return True if it's a directory to descend into."""
+    if not walker.follow and walker.is_link(entry):
+        return False
+    if entry.is_dir():  # follows links only when following is enabled
+        return True
+    apply(walker.named_obj(dir_ref, entry.name, path, FILE))
+    return False
+
+
+def _handle_error(on_error: ErrorHandler | None, path: str, exc: Exception) -> None:
+    if on_error is None:
+        raise exc
+    on_error(path, exc)
+
+
+def _make_walker(root: str, follow_symlinks: bool, fail: ErrorHandler) -> Any:
+    try:
+        if IS_WINDOWS:
+            return _WinWalker(follow_symlinks, root)
+        return _PosixWalker(follow_symlinks)
+    except _OBJECT_ERRORS as exc:
+        fail(root, exc)
+        return None
+
+
+def _call(fail: ErrorHandler, path: str, apply: Callable[[Any], None], obj: Any) -> None:
+    try:
+        apply(obj)
+    except _OBJECT_ERRORS as exc:
+        fail(path, exc)
+
+
+def _first_visit(
+    walker: Any, dir_ref: Any, visited: set[tuple[int, int]], path: str, fail: ErrorHandler
+) -> bool:
+    """Record a directory when following links.
+
+    Returns False if it was already seen (a cycle) or can't be identified (e.g.,
+    it was removed after listing); the latter is reported through ``fail``.
+    """
+    try:
+        key = walker.key(dir_ref)
+    except _OBJECT_ERRORS as exc:
+        fail(path, exc)
+        return False
+    if key in visited:
+        return False
+    visited.add(key)
+    return True
+
+
+def _close_pending(walker: Any, stack: list[tuple[bool, Any, str, str, bool]]) -> None:
+    """Close directories still open after the walk stopped early."""
+    for done, ref, *_ in stack:
+        if done:
+            walker.close(ref)
+
+
+def _walk_apply(
+    root: str,
+    apply: Callable[[Any], None],
+    follow_symlinks: bool = False,
+    on_error: ErrorHandler | None = None,
+) -> None:
+    """Call ``apply(obj)`` for root (a directory) and everything under it.
+
+    ``obj`` has ``path``, ``type`` (FILE or DIRECTORY), ``get_full_mode()``,
+    and ``set_mode(mode, other_sid)``.
+
+    Contents are handled before their directory (root last), so removing a
+    directory's own read or search permission doesn't stop traversal. If a
+    directory can't be listed, its mode is applied first and listing is retried,
+    so modes like ``u+rwx`` can repair unreadable directories.
+
+    Symlinks and junctions below root are skipped unless ``follow_symlinks``,
+    including ones swapped in during the walk (see _PosixObj and _WinObj).
+    When following, directories already visited are skipped to avoid cycles.
+
+    Errors for individual objects go to ``on_error(path, exc)`` and traversal
+    continues; without a handler, the first error is raised.
+    """
+    fail = functools.partial(_handle_error, on_error)
+    walker = _make_walker(root, follow_symlinks, fail)
+    if walker is None:
+        return
+
+    visited: set[tuple[int, int]] = set()
+    # (finished listing?, dir ref or parent ref, name, display path, mode applied?)
+    stack: list[tuple[bool, Any, str, str, bool]] = [(False, None, root, root, False)]
+    try:
+        while stack:
+            done, ref, name, path, applied = stack.pop()
+            if done:
+                try:
+                    if not applied:
+                        _call(fail, path, apply, walker.dir_obj(ref, path))
+                finally:
+                    walker.close(ref)
+                continue
+
+            try:
+                dir_ref, entries, applied = _open_dir_or_repair(walker, apply, ref, name, path)
+            except _OBJECT_ERRORS as exc:
+                fail(path, exc)
+                continue
+
+            if follow_symlinks and not _first_visit(walker, dir_ref, visited, path, fail):
+                walker.close(dir_ref)
+                continue
+
+            stack.append((True, dir_ref, name, path, applied))
+            for entry in entries:
+                entry_path = os.path.join(path, entry.name)
+                try:
+                    if _visit_entry(walker, apply, dir_ref, entry, entry_path):
+                        stack.append((False, dir_ref, entry.name, entry_path, False))
+                except _OBJECT_ERRORS as exc:
+                    fail(entry_path, exc)
+    finally:
+        _close_pending(walker, stack)
+
+
+def set_mode_recursive(  # noqa: PLR0913 (last two are keyword-only)
     path: PathType,
     mode: ModeType,
     dir_mode: ModeType | None = None,
     other_sid: Any = None,
+    *,
+    follow_symlinks: bool = False,
+    on_error: ErrorHandler | None = None,
 ) -> None:
     r"""Set all file and directory permissions at or under path to modes.
 
     Args:
     path: (:obj:`str` or :obj:`os.PathLike`)
-        Object which will have its mode set. If path is a file, only its mode
-        is set - no recursion occurs. If path is a directory, its mode and the
-        mode of all files and subdirectories below it are set.
+        Object which will have its mode set. If path is not a directory (e.g.,
+        a file or FIFO), only its mode is set - no recursion occurs. If path is
+        a directory, its mode and the mode of all files and subdirectories
+        below it are set. If path itself is a symlink, it is followed.
 
     mode: (`int` or `str`)
         Mode to be applied to object(s).
@@ -325,17 +730,36 @@ def set_mode_recursive(
     other_sid:
         Windows only. See :func:`set_mode`.
 
+    follow_symlinks: (`bool`)
+        Follow symlinks (and Windows junctions) found below path, changing
+        their targets and descending into linked directories. Off by default:
+        links are skipped, so nothing outside path is changed, even if links
+        are created while the walk is running.
+
+    on_error: (`callable`)
+        Called as ``on_error(path, exc)`` when an object can't be read or
+        changed (``OSError``, or :class:`SidConflictError` on Windows); the walk
+        then continues. By default the error is raised and the walk stops.
+        Invalid modes always raise.
+
     """
     path = _fspath(path)
-    if get_object_type(path) == FILE:
-        set_mode(path, mode, other_sid)
+    if not os.path.isdir(path):
+        try:
+            set_mode(path, mode, other_sid)
+        except _OBJECT_ERRORS as exc:
+            if on_error is None:
+                raise
+            on_error(path, exc)
         return
 
     if dir_mode is None:
         dir_mode = mode
 
-    for obj, obj_type in _iter_tree(path):
-        set_mode(obj, mode if obj_type == FILE else dir_mode, other_sid)
+    def apply(obj: Any) -> None:
+        obj.set_mode(mode if obj.type == FILE else dir_mode, other_sid)
+
+    _walk_apply(path, apply, follow_symlinks=follow_symlinks, on_error=on_error)
 
 
 def _get_effective_mode_multiple(current_mode: int, modes: str) -> int:
@@ -458,7 +882,7 @@ def _win_check_other_sid(sids: list[Any], system_sid: Any) -> None:
     other = sids[OTHER]
     for name, sid in (("owner", sids[OWNER]), ("group", sids[GROUP]), ("SYSTEM", system_sid)):
         if other == sid:
-            raise ValueError(
+            raise SidConflictError(
                 f"other_sid {win32security.ConvertSidToStringSid(other)} is the object's "
                 f"{name} SID; choose a different account for 'other' permissions"
             )
@@ -502,11 +926,19 @@ def win_get_object_sids(path: PathType, other_sid: Any = None) -> list[Any]:
     return [win_get_owner_sid(path), win_get_group_sid(path), win_get_other_sid(other_sid)]
 
 
-def win_get_permissions(path: PathType) -> int:
-    """Get the file or dir permissions."""
-    path = _fspath(path)
+def _win_resolve(path: str) -> str:
+    """Follow a symlink or junction, like os.stat/os.chmod do on POSIX.
+
+    Windows security APIs otherwise act on the link itself.
+    """
     if not os.path.exists(path):
         raise _not_found(path)
+    return os.path.realpath(path) if _is_link(path) else path
+
+
+def win_get_permissions(path: PathType) -> int:
+    """Get the file or dir permissions (of the target, if path is a link)."""
+    path = _win_resolve(_fspath(path))
 
     return _win_get_permissions(path, get_object_type(path))
 
@@ -519,11 +951,19 @@ def _get_basic_symbol_to_mode(symbol: str) -> int:
 def _win_get_permissions(path: str, object_type: int) -> int:
     """Get the permissions."""
     sec_des = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
+        path, win32security.SE_FILE_OBJECT, _WIN_SECURITY_INFO
     )
-    dacl = sec_des.GetSecurityDescriptorDacl()
+    return _win_mode_from_sd(sec_des, object_type)
 
-    sids = win_get_object_sids(path)
+
+def _win_mode_from_sd(sec_des: Any, object_type: int) -> int:
+    """Compute a mode from a security descriptor with owner, group, and DACL."""
+    dacl = sec_des.GetSecurityDescriptorDacl()
+    sids = [
+        sec_des.GetSecurityDescriptorOwner(),
+        sec_des.GetSecurityDescriptorGroup(),
+        win_get_other_sid(),
+    ]
     system_sid = _win_system_sid()
     mode = 0
 
@@ -537,27 +977,37 @@ def _win_get_permissions(path: str, object_type: int) -> int:
 
 
 def win_set_permissions(path: PathType, mode: int, other_sid: Any = None) -> None:
-    """Set the file or dir permissions."""
-    path = _fspath(path)
-    if not os.path.exists(path):
-        raise _not_found(path)
+    """Set the file or dir permissions (of the target, if path is a link)."""
+    path = _win_resolve(_fspath(path))
 
     _win_set_permissions(path, mode, get_object_type(path), other_sid)
 
 
 def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any = None) -> None:
     """Set the permissions."""
-    # Read the effective DACL (including inherited ACEs), replace every ACE with
-    # explicit ones, and write it back as a *protected* DACL. Protection
-    # (SE_DACL_PROTECTED) stops ACEs from the parent being inherited later, e.g.
-    # when someone changes the parent folder's permissions. NO_INHERITANCE on
-    # each ACE only means it does not propagate to this object's children.
     sec_des = win32security.GetNamedSecurityInfo(
-        path, win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
+        path, win32security.SE_FILE_OBJECT, _WIN_SECURITY_INFO
     )
+    _win_update_sd(sec_des, mode, object_type, other_sid)
+    # SetFileSecurity (unlike SetNamedSecurityInfo) does not re-propagate
+    # inheritance to descendants, so children of a directory keep their ACEs.
+    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
+
+
+def _win_update_sd(sec_des: Any, mode: int, object_type: int, other_sid: Any = None) -> None:
+    """Replace the DACL in sec_des (which has owner and group) to match mode."""
+    # Read the effective DACL (including inherited ACEs), replace every ACE with
+    # explicit ones, and mark it *protected*. Protection (SE_DACL_PROTECTED)
+    # stops ACEs from the parent being inherited later, e.g. when someone changes
+    # the parent folder's permissions. NO_INHERITANCE on each ACE only means it
+    # does not propagate to this object's children.
     dacl = sec_des.GetSecurityDescriptorDacl()
     system_sid = _win_system_sid()
-    sids = win_get_object_sids(path, other_sid)
+    sids = [
+        sec_des.GetSecurityDescriptorOwner(),
+        sec_des.GetSecurityDescriptorGroup(),
+        win_get_other_sid(other_sid),
+    ]
     if other_sid is not None:
         _win_check_other_sid(sids, system_sid)
 
@@ -581,13 +1031,10 @@ def _win_set_permissions(path: str, mode: int, object_type: int, other_sid: Any 
                 dacl.GetAclRevision(), win32security.NO_INHERITANCE, win_perm, sid
             )
 
-    # SetFileSecurity (unlike SetNamedSecurityInfo) does not re-propagate
-    # inheritance to descendants, so children of a directory keep their ACEs.
     sec_des.SetSecurityDescriptorDacl(1, dacl, 0)
     sec_des.SetSecurityDescriptorControl(
         win32security.SE_DACL_PROTECTED, win32security.SE_DACL_PROTECTED
     )
-    win32security.SetFileSecurity(path, win32security.DACL_SECURITY_INFORMATION, sec_des)
 
 
 def _win_sid_display(sid: Any) -> Any:
