@@ -33,7 +33,7 @@ import random
 import re
 import stat
 import string
-from collections.abc import Iterator
+from collections.abc import Callable
 from typing import Any, Final
 
 __version__ = "0.4.0"
@@ -292,21 +292,121 @@ def _resolve_mode(path: str, mode: ModeType) -> int:
     return mode
 
 
-def _iter_tree(path: str) -> Iterator[tuple[str, int]]:
-    """Yield (path, object type) for everything under path, bottom-up, path last."""
-    for root, dirs, files in os.walk(path, topdown=False):
-        for one_file in files:
-            yield os.path.join(root, one_file), FILE
-        for one_dir in dirs:
-            yield os.path.join(root, one_dir), DIRECTORY
-    yield path, DIRECTORY
+# Junctions are directory reparse points that os.DirEntry.is_symlink() doesn't
+# report (os.path.isjunction needs Python 3.12+).
+_IO_REPARSE_TAG_MOUNT_POINT: Final = 0xA0000003
+
+# Per-object errors that recursive operations report and skip past.
+_OBJECT_ERRORS: tuple[type[Exception], ...] = (OSError,)
+if HAS_PYWIN32:
+    _OBJECT_ERRORS += (pywinerror,)
+
+ErrorHandler = Callable[[str, Exception], None]
+"""Callback for recursive operations: called with the path and the error."""
 
 
-def set_mode_recursive(
+def _is_junction(path: str) -> bool:
+    if not IS_WINDOWS:
+        return False
+    return getattr(os.lstat(path), "st_reparse_tag", 0) == _IO_REPARSE_TAG_MOUNT_POINT
+
+
+def _is_link(path: str) -> bool:
+    """Return True for a symlink or, on Windows, a junction."""
+    return os.path.islink(path) or _is_junction(path)
+
+
+def _walk_apply(
+    root: str,
+    apply: Callable[[str, int], None],
+    follow_symlinks: bool = False,
+    on_error: ErrorHandler | None = None,
+) -> None:
+    """Call ``apply(path, object_type)`` for root and everything under it.
+
+    Contents are handled before their directory (root last), so removing a
+    directory's own read or search permission doesn't stop traversal. If a
+    directory can't be listed, its mode is applied first and listing is retried,
+    so modes like ``u+rwx`` can repair unreadable directories.
+
+    Symlinks and junctions below root are skipped unless ``follow_symlinks``;
+    when following, directories already visited are skipped to avoid cycles.
+
+    Errors for individual objects go to ``on_error(path, exc)`` and traversal
+    continues; without a handler, the first error is raised.
+    """
+
+    def fail(path: str, exc: Exception) -> None:
+        if on_error is None:
+            raise exc
+        on_error(path, exc)
+
+    visited: set[tuple[int, int]] = set()
+
+    def first_visit(path: str) -> bool:
+        if not follow_symlinks:
+            return True  # no links followed, so no cycles
+        st = os.stat(path)
+        key = (st.st_dev, st.st_ino)
+        if key in visited:
+            return False
+        visited.add(key)
+        return True
+
+    try:
+        first_visit(root)
+    except OSError as exc:
+        fail(root, exc)
+        return
+
+    # (path, children already queued, mode already applied)
+    stack: list[tuple[str, bool, bool]] = [(root, False, False)]
+    while stack:
+        path, expanded, applied = stack.pop()
+        if expanded:
+            if not applied:
+                try:
+                    apply(path, DIRECTORY)
+                except _OBJECT_ERRORS as exc:
+                    fail(path, exc)
+            continue
+
+        try:
+            with os.scandir(path) as it:
+                entries = list(it)
+        except OSError:
+            try:
+                apply(path, DIRECTORY)
+                applied = True
+                with os.scandir(path) as it:
+                    entries = list(it)
+            except _OBJECT_ERRORS as exc:
+                fail(path, exc)
+                continue
+
+        stack.append((path, True, applied))
+        for entry in entries:
+            try:
+                is_link = entry.is_symlink() or _is_junction(entry.path)
+                if is_link and not follow_symlinks:
+                    continue
+                if entry.is_dir():  # follows links when following is enabled
+                    if first_visit(entry.path):
+                        stack.append((entry.path, False, False))
+                    continue
+                apply(entry.path, FILE)
+            except _OBJECT_ERRORS as exc:
+                fail(entry.path, exc)
+
+
+def set_mode_recursive(  # noqa: PLR0913 (last two are keyword-only)
     path: PathType,
     mode: ModeType,
     dir_mode: ModeType | None = None,
     other_sid: Any = None,
+    *,
+    follow_symlinks: bool = False,
+    on_error: ErrorHandler | None = None,
 ) -> None:
     r"""Set all file and directory permissions at or under path to modes.
 
@@ -314,7 +414,8 @@ def set_mode_recursive(
     path: (:obj:`str` or :obj:`os.PathLike`)
         Object which will have its mode set. If path is a file, only its mode
         is set - no recursion occurs. If path is a directory, its mode and the
-        mode of all files and subdirectories below it are set.
+        mode of all files and subdirectories below it are set. If path itself
+        is a symlink to a directory, it is followed.
 
     mode: (`int` or `str`)
         Mode to be applied to object(s).
@@ -325,6 +426,16 @@ def set_mode_recursive(
     other_sid:
         Windows only. See :func:`set_mode`.
 
+    follow_symlinks: (`bool`)
+        Follow symlinks (and Windows junctions) found below path, changing
+        their targets and descending into linked directories. Off by default:
+        links are skipped, so nothing outside path is changed.
+
+    on_error: (`callable`)
+        Called as ``on_error(path, exc)`` when an object can't be read or
+        changed; the walk then continues. By default the error is raised and
+        the walk stops. Invalid modes always raise.
+
     """
     path = _fspath(path)
     if get_object_type(path) == FILE:
@@ -334,8 +445,10 @@ def set_mode_recursive(
     if dir_mode is None:
         dir_mode = mode
 
-    for obj, obj_type in _iter_tree(path):
+    def apply(obj: str, obj_type: int) -> None:
         set_mode(obj, mode if obj_type == FILE else dir_mode, other_sid)
+
+    _walk_apply(path, apply, follow_symlinks=follow_symlinks, on_error=on_error)
 
 
 def _get_effective_mode_multiple(current_mode: int, modes: str) -> int:

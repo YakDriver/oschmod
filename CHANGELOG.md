@@ -1,5 +1,20 @@
 ## Changelog
 
+### Unreleased
+
+**Security**:
+
+*   Recursive mode changes (`-R` and `set_mode_recursive()`) no longer follow symlinks found inside the tree, which could change files outside it (#183). On Windows, directory junctions are skipped as well. Use `-L` or `follow_symlinks=True` to follow them.
+
+**Fixes**:
+
+*   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior.
+*   `-R` no longer silently skips the contents of directories it can't list. It applies the directory's new mode first and tries again (#186).
+
+**Features**:
+
+*   Add `-H` (default), `-L`, and `-P` to control symlink handling with `-R`, like GNU chmod.
+
 ### 0.4.0
 
 **Commit Delta**: [Change from 0.3.12 release](https://github.com/YakDriver/oschmod/compare/0.3.12...0.4.0)

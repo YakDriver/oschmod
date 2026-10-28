@@ -54,7 +54,8 @@ A combination of the letters `ugoa` controls which users' access to the file wil
 
 ```console
 $ oschmod -h
-usage: oschmod [-h] [-R] [-v] [--other-sid SID] [--version] mode object
+usage: oschmod [-h] [-R] [-H | -L | -P] [-v] [--other-sid SID] [--version]
+               mode object
 
 Change the mode (permissions) of a file or directory
 
@@ -65,6 +66,11 @@ positional arguments:
 options:
   -h, --help       show this help message and exit
   -R               apply mode recursively
+  -H               with -R, follow the object if it is a symlink, but no links
+                   below it (default)
+  -L               with -R, follow every symlink (changes link targets, even
+                   outside the tree)
+  -P               with -R, follow no symlinks
   -v               verbose: show each object as its mode is set; repeat (-vv)
                    to also show old and new modes
   --other-sid SID  Windows only: SID that receives "other" permissions
@@ -138,6 +144,16 @@ $ oschmod -vv 600 secrets.txt
 secrets.txt: 0o644 (rw-r--r--) -> 0o600 (rw-------)
 ```
 
+### Recursion and symlinks
+
+With `-R`, symlinks found inside the tree are **not** followed, so nothing outside the tree is changed. This is the same as GNU `chmod -R` and is the safe choice, especially when running as root or Administrator on a directory that others can write to. On Windows, directory junctions are treated the same way as symlinks.
+
+* `-H` (default): if the object you name is a symlink to a directory, follow it, but no links below it.
+* `-L`: follow every symlink, changing link targets wherever they are. Use this only for trees you control, for example a deployment directory that links to shared storage. Directory cycles are skipped.
+* `-P`: follow no symlinks; a symlink to a directory given on the command line is left alone.
+
+If an object can't be changed, ***oschmod*** prints an error, keeps going, and exits with status 1 at the end. A directory that can't be listed because of its current mode (e.g., `000`) gets its new mode first, so `oschmod -R u+rwX` can repair it.
+
 ## Python usage
 
 You can use ***oschmod*** from Python code. Any of the command line examples above will work very similarly. For example, *Example 4* above, in Python code, would look like this:
@@ -187,6 +203,17 @@ oschmod.set_mode("myfile2", 0o777)
 ```
 
 `get_mode()` returns only the read/write/execute bits (`0o777`). On macOS and Linux, use `get_full_mode()` to also include set-user-ID, set-group-ID, and sticky bits (`0o7777`). Symbolic modes such as `g+w` change only read/write/execute bits and leave those special bits as they are.
+
+`set_mode_recursive()` skips symlinks below the path by default. Pass `follow_symlinks=True` to follow them. Errors stop the walk unless you pass `on_error`, which is called with the path and exception for each failure:
+
+```python
+import oschmod
+
+failures = []
+oschmod.set_mode_recursive(
+    "mydir", "u=rw,go=r", "u=rwx,go=rx", on_error=lambda path, exc: failures.append(path)
+)
+```
 
 Paths can be strings or any path-like object, such as `pathlib.Path`:
 

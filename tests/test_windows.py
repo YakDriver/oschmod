@@ -161,3 +161,22 @@ def test_set_mode_on_dir_keeps_descendants_accessible(tmp_path):
     oschmod.set_mode(top, 0o700)
     assert deep.exists()
     assert _ace_sids(deep) == before
+
+
+def test_recursive_skips_junctions(tmp_path):
+    """Junctions are reparse points, not symlinks, but must be skipped too (#183)."""
+    import _winapi  # noqa: PLC0415
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "inner.txt").write_text("x")
+    oschmod.set_mode(target / "inner.txt", 0o600)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    _winapi.CreateJunction(str(target), str(tree / "junction"))
+
+    oschmod.set_mode_recursive(tree, 0o644, 0o755)
+    assert oschmod.get_mode(target / "inner.txt") == 0o600
+
+    oschmod.set_mode_recursive(tree, 0o644, 0o755, follow_symlinks=True)
+    assert oschmod.get_mode(target / "inner.txt") == 0o644
