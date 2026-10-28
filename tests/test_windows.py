@@ -197,3 +197,33 @@ def test_set_mode_follows_symlink_like_posix(tmp_path):
     oschmod.set_mode(link, 0o644)
     assert oschmod.get_mode(target) == 0o644
     assert oschmod.get_mode(link) == 0o644
+
+
+def test_sid_conflict_is_reported_per_object(tmp_path):
+    """SidConflictError depends on each object's owner, so -R reports and continues."""
+    import win32security  # noqa: PLC0415
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "sub" / "f.txt").write_text("x")
+    owner = win32security.ConvertSidToStringSid(oschmod.win_get_owner_sid(tree))
+    errors: list[Exception] = []
+    oschmod.set_mode_recursive(tree, 0o604, other_sid=owner, on_error=lambda _, e: errors.append(e))
+    assert len(errors) == 3
+    assert all(isinstance(e, oschmod.SidConflictError) for e in errors)
+    assert all(isinstance(e, ValueError) for e in errors)  # backward compatible
+
+
+def test_recursive_writes_protected_dacl(tmp_path):
+    """The handle-based walk (SetKernelObjectSecurity) still protects each DACL."""
+    import win32security  # noqa: PLC0415
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "sub" / "f.txt").write_text("x")
+    oschmod.set_mode_recursive(tree, 0o640, 0o750)
+    for obj, mode in ((tree / "sub" / "f.txt", 0o640), (tree / "sub", 0o750), (tree, 0o750)):
+        assert oschmod.get_mode(obj) == mode
+        sec = win32security.GetFileSecurity(str(obj), win32security.DACL_SECURITY_INFORMATION)
+        control, _ = sec.GetSecurityDescriptorControl()
+        assert control & win32security.SE_DACL_PROTECTED

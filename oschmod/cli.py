@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
+from typing import Any
 
 import oschmod
 
@@ -78,15 +79,15 @@ def _format_mode(mode: int) -> str:
     return f"{mode:#05o} ({oschmod.mode_to_symbolic(mode)})"
 
 
-def _apply(path: str, mode: str, verbose: int, other_sid: str | None) -> None:
+def _apply(obj: Any, mode: str, verbose: int, other_sid: str | None) -> None:
     """Set mode on a single object, reporting according to verbosity."""
-    old_mode = oschmod.get_full_mode(path) if verbose > 1 else 0
-    oschmod.set_mode(path, mode, other_sid)
+    old_mode = obj.get_full_mode() if verbose > 1 else 0
+    obj.set_mode(mode, other_sid)
     if verbose > 1:
-        new_mode = oschmod.get_full_mode(path)
-        print(f"{path}: {_format_mode(old_mode)} -> {_format_mode(new_mode)}")
+        new_mode = obj.get_full_mode()
+        print(f"{obj.path}: {_format_mode(old_mode)} -> {_format_mode(new_mode)}")
     elif verbose:
-        print(path)
+        print(obj.path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -103,20 +104,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"oschmod: {path}: {getattr(exc, 'strerror', None) or exc}", file=sys.stderr)
 
     try:
+        if args.R and args.links == "P" and oschmod._is_link(obj):
+            return 0  # like GNU chmod -R -P: a symlink operand is neither followed nor changed
         if not os.path.exists(obj):
             raise FileNotFoundError(f"Path {obj} could not be found.")
-        if args.R and oschmod.get_object_type(obj) == oschmod.DIRECTORY:
-            if args.links == "P" and oschmod._is_link(obj):
-                return 0  # like GNU chmod -R -P: don't traverse or change a linked directory
+        if args.R and os.path.isdir(obj):
             # Same traversal as oschmod.set_mode_recursive: contents first, root last.
             oschmod._walk_apply(
                 obj,
-                lambda path, _: _apply(path, args.mode, args.verbose, args.other_sid),
+                lambda o: _apply(o, args.mode, args.verbose, args.other_sid),
                 follow_symlinks=args.links == "L",
                 on_error=report,
             )
         else:
-            _apply(obj, args.mode, args.verbose, args.other_sid)
+            _apply(
+                oschmod._PathObj(obj, oschmod.get_object_type(obj)),
+                args.mode,
+                args.verbose,
+                args.other_sid,
+            )
     except _ERRORS as exc:
         print(f"oschmod: {exc}", file=sys.stderr)
         return 1

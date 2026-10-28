@@ -4,14 +4,17 @@
 
 **Security**:
 
-*   Recursive mode changes (`-R` and `set_mode_recursive()`) no longer follow symlinks found inside the tree, which could change files outside it (#183). On Windows, directory junctions are skipped as well. Use `-L` or `follow_symlinks=True` to follow them.
+*   Recursive mode changes (`-R` and `set_mode_recursive()`) no longer follow symlinks found inside the tree, which could change files outside it (#183). On Windows, directory junctions are skipped as well. Use `-L` or `follow_symlinks=True` to follow them. This also holds if someone replaces a file or directory with a link while the walk is running: on macOS and Linux, oschmod works relative to already-open directories and never follows the last path component; on Windows, it changes each object through a handle and refuses any that resolves outside the tree.
 
 **Fixes**:
 
-*   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior.
+*   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior, including when the path is a single file. On Windows, an `other_sid` that matches an object's owner or group now raises `SidConflictError` (a `ValueError` subclass), which `on_error` receives so the walk can continue.
 *   `-R` no longer silently skips the contents of directories it can't list. It applies the directory's new mode first and tries again (#186).
 
 *   On Windows, `set_mode()` and `get_mode()` on a symlink or junction now act on its target, as they do on macOS and Linux. Previously they changed or read the link itself.
+
+*   `-R` and `set_mode_recursive()` on a FIFO or other non-directory set its mode instead of failing with "Not a directory".
+*   `-R -P` leaves a symlink to a file, or a dangling symlink, alone (exit 0), like GNU chmod.
 
 **Features**:
 
