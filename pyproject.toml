@@ -13,7 +13,7 @@ authors = [{ name = "YakDriver", email = "dirk.avery@GEEmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     # Library runtime dependency: lower bound only, so downstream users can resolve.
-    "pywin32>=311; sys_platform == 'win32'",
+    "pywin32>=312; sys_platform == 'win32'",
 ]
 keywords = ["chmod", "permissions", "windows", "acl", "file mode"]
 classifiers = [
