@@ -615,11 +615,19 @@ def win_get_object_sids(path: PathType, other_sid: Any = None) -> list[Any]:
     return [win_get_owner_sid(path), win_get_group_sid(path), win_get_other_sid(other_sid)]
 
 
-def win_get_permissions(path: PathType) -> int:
-    """Get the file or dir permissions."""
-    path = _fspath(path)
+def _win_resolve(path: str) -> str:
+    """Follow a symlink or junction, like os.stat/os.chmod do on POSIX.
+
+    Windows security APIs otherwise act on the link itself.
+    """
     if not os.path.exists(path):
         raise _not_found(path)
+    return os.path.realpath(path) if _is_link(path) else path
+
+
+def win_get_permissions(path: PathType) -> int:
+    """Get the file or dir permissions (of the target, if path is a link)."""
+    path = _win_resolve(_fspath(path))
 
     return _win_get_permissions(path, get_object_type(path))
 
@@ -650,10 +658,8 @@ def _win_get_permissions(path: str, object_type: int) -> int:
 
 
 def win_set_permissions(path: PathType, mode: int, other_sid: Any = None) -> None:
-    """Set the file or dir permissions."""
-    path = _fspath(path)
-    if not os.path.exists(path):
-        raise _not_found(path)
+    """Set the file or dir permissions (of the target, if path is a link)."""
+    path = _win_resolve(_fspath(path))
 
     _win_set_permissions(path, mode, get_object_type(path), other_sid)
 

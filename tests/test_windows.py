@@ -180,3 +180,20 @@ def test_recursive_skips_junctions(tmp_path):
 
     oschmod.set_mode_recursive(tree, 0o644, 0o755, follow_symlinks=True)
     assert oschmod.get_mode(target / "inner.txt") == 0o644
+
+
+def test_set_mode_follows_symlink_like_posix(tmp_path):
+    """set_mode/get_mode on a link act on the target, as os.chmod does on POSIX."""
+    import os  # noqa: PLC0415
+
+    target = tmp_path / "target.txt"
+    target.write_text("x")
+    link = tmp_path / "link.txt"
+    try:
+        os.symlink(target, link)
+    except OSError as exc:
+        pytest.skip(f"cannot create symlinks: {exc}")
+    oschmod.set_mode(target, 0o600)
+    oschmod.set_mode(link, 0o644)
+    assert oschmod.get_mode(target) == 0o644
+    assert oschmod.get_mode(link) == 0o644

@@ -11,6 +11,8 @@
 *   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior.
 *   `-R` no longer silently skips the contents of directories it can't list. It applies the directory's new mode first and tries again (#186).
 
+*   On Windows, `set_mode()` and `get_mode()` on a symlink or junction now act on its target, as they do on macOS and Linux. Previously they changed or read the link itself.
+
 **Features**:
 
 *   Add `-H` (default), `-L`, and `-P` to control symlink handling with `-R`, like GNU chmod.
