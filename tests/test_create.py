@@ -2,6 +2,7 @@
 
 import builtins
 import contextlib
+import errno
 import os
 import sys
 from pathlib import Path
@@ -365,3 +366,24 @@ def test_open_new_allows_other_handles_while_open(tmp_path):
         with open(path, "a") as other:
             other.write("two")
     assert path.read_text() == "onetwo"
+
+
+@posix_only
+def test_search_flags_defined():
+    """macOS and Linux always have a search-only open, even if os doesn't name it."""
+    if sys.platform in ("darwin", "linux"):
+        assert oschmod._SEARCH_FLAGS
+
+
+@posix_only
+def test_open_search_dir_falls_back_on_einval(tmp_path, monkeypatch):
+    real_open = os.open
+
+    def no_search(path, flags, *args, **kwargs):
+        if flags & oschmod._SEARCH_FLAGS == oschmod._SEARCH_FLAGS and oschmod._SEARCH_FLAGS:
+            raise OSError(errno.EINVAL, "Invalid argument")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", no_search)
+    fd = oschmod._open_search_dir(str(tmp_path))
+    os.close(fd)

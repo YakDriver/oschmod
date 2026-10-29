@@ -404,7 +404,7 @@ def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> 
     # followed. Nothing is opened for reading: an unreadable parent works, as
     # with os.mkdir. ".." isn't collapsed, since that could change the parent.
     parent, name = os.path.split(path.rstrip("/") or path)
-    dir_fd = os.open(parent or ".", _SEARCH_FLAGS | os.O_DIRECTORY | os.O_CLOEXEC)
+    dir_fd = _open_search_dir(parent or ".")
     try:
         # The umask can only remove bits, so the directory is never more open
         # than new_mode; the chmod then sets it exactly.
@@ -414,9 +414,28 @@ def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> 
         os.close(dir_fd)
 
 
-# Open a directory for use as dir_fd without needing read permission: O_PATH
-# on Linux, O_SEARCH on macOS and the BSDs. O_RDONLY elsewhere.
-_SEARCH_FLAGS = getattr(os, "O_PATH", 0) or getattr(os, "O_SEARCH", 0) or os.O_RDONLY
+# Flags to open a directory for use as dir_fd without read permission: O_PATH on
+# Linux, O_SEARCH on macOS and the BSDs. The python.org macOS builds of 3.11 and
+# 3.12 don't define os.O_SEARCH although the kernel supports it, so use XNU's
+# value (O_EXEC | O_DIRECTORY) there.
+_XNU_O_SEARCH = 0x40100000
+_SEARCH_FLAGS = (
+    getattr(os, "O_PATH", 0)
+    or getattr(os, "O_SEARCH", 0)
+    or (_XNU_O_SEARCH if sys.platform == "darwin" else 0)
+)
+
+
+def _open_search_dir(path: str) -> int:
+    """Open a directory as a dir_fd, needing only search permission if possible."""
+    base = os.O_DIRECTORY | os.O_CLOEXEC
+    if _SEARCH_FLAGS:
+        try:
+            return os.open(path, _SEARCH_FLAGS | base)
+        except OSError as exc:
+            if exc.errno != errno.EINVAL:  # EINVAL: a kernel without the flag
+                raise
+    return os.open(path, os.O_RDONLY | base)
 
 
 def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
