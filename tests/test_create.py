@@ -164,3 +164,15 @@ def test_open_new_sets_special_bits(tmp_path):
     with oschmod.open_new(path, perms=0o4700):
         pass
     assert oschmod.get_full_mode(path) == 0o4700
+
+
+def test_mkdir_refuses_symlink(tmp_path):
+    target = tmp_path / "elsewhere"
+    link = tmp_path / "link"
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"cannot create symlinks: {exc}")
+    with pytest.raises(FileExistsError):
+        oschmod.mkdir(link)
+    assert not target.exists()

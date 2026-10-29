@@ -417,8 +417,10 @@ def _win_create_file(path: str, mode: int, other_sid: Any, read: bool, append: b
             access,
             0,  # no sharing while we hold it open, like open(path, "x")
             sa,
-            win32file.CREATE_NEW,  # fails if path exists, including a symlink
-            win32file.FILE_ATTRIBUTE_NORMAL,
+            win32file.CREATE_NEW,  # fails if path exists
+            # Without this, CREATE_NEW follows a dangling symlink and creates its
+            # target; with it, the link itself counts as an existing file.
+            win32file.FILE_ATTRIBUTE_NORMAL | win32file.FILE_FLAG_OPEN_REPARSE_POINT,
             None,
         )
     except pywinerror as exc:
