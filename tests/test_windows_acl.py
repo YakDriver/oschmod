@@ -4,6 +4,7 @@ Each test writes an exact, protected DACL first, so results don't depend on
 what the CI runner's temp directory inherits.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -274,3 +275,43 @@ def test_broader_group_access_follows_users_when_users_is_group(tmp_path):
     oschmod.set_mode(path, "u-x")
     assert _aces(path)[oschmod.USERS_SID] & con.FILE_GENERIC_READ == con.FILE_GENERIC_READ
     assert oschmod.get_mode(path) == 0o640
+
+
+# --- open_new / mkdir (#196) -------------------------------------------------------
+
+
+def _protected(path: Path) -> bool:
+    sd = sec.GetFileSecurity(str(path), sec.DACL_SECURITY_INFORMATION)
+    control, _ = sd.GetSecurityDescriptorControl()
+    return bool(control & sec.SE_DACL_PROTECTED)
+
+
+def test_open_new_creates_protected_owner_only_dacl(tmp_path):
+    path = tmp_path / "secret.txt"
+    with oschmod.open_new(path) as f:
+        f.write("token")
+    assert _protected(path)
+    assert set(_aces(path)) == {_owner(path)}  # nothing inherited from tmp_path
+    assert oschmod.get_mode(path) == 0o600
+
+
+def test_open_new_other_sid(tmp_path):
+    path = tmp_path / "f.txt"
+    with oschmod.open_new(path, perms=0o604, other_sid=AUTHENTICATED_USERS):
+        pass
+    assert AUTHENTICATED_USERS in _aces(path)
+    assert oschmod.USERS_SID not in _aces(path)
+    assert oschmod.get_mode(path, other_sid=AUTHENTICATED_USERS) == 0o604
+
+
+def test_open_new_handle_is_not_inheritable(tmp_path):
+    with oschmod.open_new(tmp_path / "f") as f:
+        assert not os.get_inheritable(f.fileno())
+
+
+def test_mkdir_creates_protected_dacl(tmp_path):
+    path = tmp_path / "private"
+    oschmod.mkdir(path, 0o700)
+    assert _protected(path)
+    assert set(_aces(path)) == {_owner(path)}
+    assert oschmod.get_mode(path) == 0o700

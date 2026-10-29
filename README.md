@@ -244,6 +244,21 @@ oschmod.set_mode("myfile2", 0o777)
 
 An invalid mode string raises `oschmod.ModeError`, a `ValueError`.
 
+### Creating private files
+
+Creating a file and then calling `set_mode()` leaves a moment when the file has default permissions; on Windows, those are usually inherited from the folder. To create a file that has its final permissions from the start, use `oschmod.open_new()`. It works like `open(path, "x")`: it fails with `FileExistsError` if anything, including a symlink, already exists at the path.
+
+```python
+import oschmod
+
+with oschmod.open_new("token.json", "w", perms=0o600) as f:
+    f.write(secret)
+
+oschmod.mkdir("keys", perms=0o700)
+```
+
+`mode` can be `"w"`, `"x"`, or `"a"`, plus optional `"b"`/`"t"` and `"+"`. The umask doesn't apply, so the result is exactly `perms`. On Windows, the file or directory is created with the same protected DACL that `set_mode()` writes.
+
 To give one file the same mode as another, use `oschmod.copy_mode(src, dst)`. Unlike `shutil.copymode()`, it also works on Windows.
 
 `set_mode_recursive()` skips symlinks below the path by default. Pass `follow_symlinks=True` to follow them. Errors stop the walk unless you pass `on_error`, which is called with the path and exception for each failure:

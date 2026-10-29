@@ -27,6 +27,8 @@ Paths may be given as ``str`` or any ``os.PathLike`` (e.g., ``pathlib.Path``).
 
 from __future__ import annotations
 
+import codecs
+import contextlib
 import errno
 import functools
 import os
@@ -35,8 +37,9 @@ import random
 import re
 import stat
 import string
+import sys
 from collections.abc import Callable
-from typing import Any, Final
+from typing import IO, Any, Final
 
 __version__ = "0.6.0"
 
@@ -288,6 +291,223 @@ def copy_mode(src: PathType, dst: PathType, other_sid: Any = None) -> None:
     Symlinks are followed.
     """
     set_mode(dst, get_full_mode(src, other_sid), other_sid)
+
+
+_OPEN_NEW_MODE_RE: Final = re.compile(r"[wxa]\+?[bt]?|[wxa][bt]\+")
+
+
+def open_new(  # noqa: PLR0913 (mirrors open())
+    path: PathType,
+    mode: str = "w",
+    perms: ModeType = 0o600,
+    *,
+    other_sid: Any = None,
+    buffering: int = -1,
+    encoding: str | None = None,
+    errors: str | None = None,
+    newline: str | None = None,
+) -> IO[Any]:
+    """Create a new file that has ``perms`` from the moment it exists, and open it.
+
+    Use this instead of ``open()`` followed by :func:`set_mode` for secrets, so
+    no one else can open the file in between (#196). The file must not exist:
+    like ``open(path, "x")``, this raises ``FileExistsError`` otherwise, including
+    when ``path`` is a symlink.
+
+    ``mode`` is ``"w"``, ``"x"``, or ``"a"`` (all create the file), optionally with
+    ``"b"`` or ``"t"`` and ``"+"`` to also read. ``perms`` is a mode such as
+    ``0o600``, ``"600"``, or ``"u=rw"`` (applied to no permissions). The umask
+    doesn't apply. Other arguments are as in ``open()``.
+
+    On Windows, the file is created with the protected DACL that ``set_mode``
+    would write; ``other_sid`` is as in :func:`set_mode`.
+    """
+    path = _fspath(path)
+    if not isinstance(mode, str) or not _OPEN_NEW_MODE_RE.fullmatch(mode):
+        raise ValueError(f"invalid mode {mode!r}: use 'w', 'x', or 'a', with optional 'b'/'t'/'+'")
+    _check_open_args("b" in mode, buffering, encoding, errors, newline)
+    new_mode = _resolve_mode_with(perms, lambda: 0, lambda: False)
+    read = "+" in mode
+    append = mode[0] == "a"
+
+    created: list[tuple[int, int]] = []  # (st_dev, st_ino) of the file this call made
+
+    def opener(name: str, _flags: int) -> int:
+        if IS_WINDOWS:
+            fd = _win_create_file(name, new_mode, other_sid, read, append)
+        else:
+            fd = _posix_create_file(name, new_mode, read, append)
+        st = os.fstat(fd)
+        created.append((st.st_dev, st.st_ino))
+        return fd
+
+    # open() owns the descriptor from here: if wrapping fails, it closes it once.
+    # "x" makes open() itself require a new file; the opener does the creating.
+    open_mode = "x" + mode[1:] if mode[0] != "a" else mode
+    try:
+        return open(  # returned to the caller, like open()
+            path,
+            open_mode,
+            buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+            opener=opener,
+        )
+    except BaseException:
+        # open() failed after creating the file (rare: arguments were checked
+        # first). Remove it only if it is still the file this call created.
+        if created:
+            with contextlib.suppress(OSError):
+                st = os.lstat(path)
+                if (st.st_dev, st.st_ino) == created[0]:
+                    os.remove(path)
+        raise
+
+
+def _check_open_args(
+    binary: bool, buffering: int, encoding: str | None, errors: str | None, newline: str | None
+) -> None:
+    """Reject arguments open() would reject, before the file is created."""
+    if binary:
+        for name, value in (("encoding", encoding), ("errors", errors), ("newline", newline)):
+            if value is not None:
+                raise ValueError(f"binary mode doesn't take an {name} argument")
+        return
+    if buffering == 0:
+        raise ValueError("can't have unbuffered text I/O")
+    # "locale" is open()'s name for the locale encoding, not a codec
+    if encoding is not None and encoding != "locale":
+        codecs.lookup(encoding)  # LookupError for unknown encodings
+    if newline not in (None, "", "\n", "\r", "\r\n"):
+        raise ValueError(f"illegal newline value: {newline!r}")
+
+
+def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> None:
+    """Create a directory that has ``perms`` from the moment it exists.
+
+    Like ``os.mkdir``, raises ``FileExistsError`` if ``path`` exists. The umask
+    doesn't apply. ``perms`` and ``other_sid`` are as in :func:`open_new`.
+    """
+    path = _fspath(path)
+    new_mode = _resolve_mode_with(perms, lambda: 0, lambda: True)
+    if IS_WINDOWS:
+        sa = _win_new_object_attributes(new_mode, DIRECTORY, other_sid)
+        try:
+            win32file.CreateDirectory(path, sa)
+        except pywinerror as exc:
+            raise OSError(0, exc.strerror, path, exc.winerror) from exc
+        return
+    # Pin the parent, then create and chmod relative to it, so swapping the
+    # parent between the two calls can't redirect the chmod. The name has no
+    # trailing slash, so a symlink that replaces the new directory isn't
+    # followed. Nothing is opened for reading: an unreadable parent works, as
+    # with os.mkdir. ".." isn't collapsed, since that could change the parent.
+    parent, name = os.path.split(path.rstrip("/") or path)
+    dir_fd = _open_search_dir(parent or ".")
+    try:
+        # The umask can only remove bits, so the directory is never more open
+        # than new_mode; the chmod then sets it exactly.
+        os.mkdir(name, new_mode & _PERM_MASK, dir_fd=dir_fd)
+        _PosixObj(path, DIRECTORY, dir_fd=dir_fd, name=name, nofollow=True).set_mode(new_mode)
+    finally:
+        os.close(dir_fd)
+
+
+# Flags to open a directory for use as dir_fd without read permission: O_PATH on
+# Linux, O_SEARCH on macOS and the BSDs. The python.org macOS builds of 3.11 and
+# 3.12 don't define os.O_SEARCH although the kernel supports it, so use XNU's
+# value (O_EXEC | O_DIRECTORY) there.
+_XNU_O_SEARCH = 0x40100000
+_SEARCH_FLAGS = (
+    getattr(os, "O_PATH", 0)
+    or getattr(os, "O_SEARCH", 0)
+    or (_XNU_O_SEARCH if sys.platform == "darwin" else 0)
+)
+
+
+def _open_search_dir(path: str) -> int:
+    """Open a directory as a dir_fd, needing only search permission if possible."""
+    base = os.O_DIRECTORY | os.O_CLOEXEC
+    if _SEARCH_FLAGS:
+        try:
+            return os.open(path, _SEARCH_FLAGS | base)
+        except OSError as exc:
+            if exc.errno != errno.EINVAL:  # EINVAL: a kernel without the flag
+                raise
+    return os.open(path, os.O_RDONLY | base)
+
+
+def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
+    flags = os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    flags |= os.O_RDWR if read else os.O_WRONLY
+    if append:
+        flags |= os.O_APPEND
+    # O_EXCL fails if anything, even a dangling symlink, is at path. The umask can
+    # only remove bits, so the file is never more open than mode; fchmod then sets
+    # the exact mode (including bits the umask removed and special bits).
+    fd = os.open(path, flags, mode & _PERM_MASK)
+    try:
+        os.chmod(fd, mode)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _win_new_object_attributes(mode: int, object_type: int, other_sid: Any) -> Any:
+    """SECURITY_ATTRIBUTES for a new file or directory with exactly ``mode``."""
+    import win32api  # noqa: PLC0415
+
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
+    try:
+        owner = win32security.GetTokenInformation(token, win32security.TokenOwner)
+        group = win32security.GetTokenInformation(token, win32security.TokenPrimaryGroup)
+    finally:
+        token.Close()
+    sec_des = win32security.SECURITY_DESCRIPTOR()
+    sec_des.SetSecurityDescriptorOwner(owner, False)
+    sec_des.SetSecurityDescriptorGroup(group, False)
+    _win_update_sd(sec_des, mode, object_type, other_sid)
+    sa = win32security.SECURITY_ATTRIBUTES()
+    sa.SECURITY_DESCRIPTOR = sec_des
+    sa.bInheritHandle = False  # pywin32 defaults to True
+    return sa
+
+
+def _win_create_file(path: str, mode: int, other_sid: Any, read: bool, append: bool) -> int:
+    """Create a new file with its final DACL in one step; return a C runtime fd."""
+    if sys.platform != "win32":  # pragma: no cover - for type checkers
+        raise NotImplementedError
+    import msvcrt  # noqa: PLC0415
+
+    sa = _win_new_object_attributes(mode, FILE, other_sid)
+    access = ntsecuritycon.GENERIC_WRITE | (ntsecuritycon.GENERIC_READ if read else 0)
+    try:
+        handle = win32file.CreateFile(
+            path,
+            access,
+            # Same sharing as open(): the C runtime's _wopen shares read and write.
+            # CREATE_NEW, not the share mode, is what makes creation exclusive.
+            win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE,
+            sa,
+            win32file.CREATE_NEW,  # fails if path exists
+            # Without this, CREATE_NEW follows a dangling symlink and creates its
+            # target; with it, the link itself counts as an existing file.
+            win32file.FILE_ATTRIBUTE_NORMAL | win32file.FILE_FLAG_OPEN_REPARSE_POINT,
+            None,
+        )
+    except pywinerror as exc:
+        raise OSError(0, exc.strerror, path, exc.winerror) from exc
+    flags = (os.O_RDWR if read else os.O_WRONLY) | (os.O_APPEND if append else 0)
+    raw = handle.Detach()
+    try:
+        return msvcrt.open_osfhandle(raw, flags)
+    except BaseException:
+        import win32api  # noqa: PLC0415
+
+        win32api.CloseHandle(raw)
+        raise
 
 
 def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:

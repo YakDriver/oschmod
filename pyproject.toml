@@ -107,7 +107,7 @@ strict = true
 warn_unreachable = false
 
 [[tool.mypy.overrides]]
-module = ["win32security", "ntsecuritycon", "pywintypes", "win32file"]
+module = ["win32security", "ntsecuritycon", "pywintypes", "win32file", "win32api"]
 ignore_missing_imports = true
 
 [tool.bumpversion]
