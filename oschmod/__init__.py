@@ -38,7 +38,7 @@ import string
 from collections.abc import Callable
 from typing import Any, Final
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 PathType = str | os.PathLike[str]
 """Accepted path input: a string or any path-like object."""

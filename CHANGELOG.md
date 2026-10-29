@@ -1,6 +1,14 @@
 ## Changelog
 
-### Unreleased
+### 0.5.0
+
+**Commit Delta**: [Change from 0.4.0 release](https://github.com/YakDriver/oschmod/compare/0.4.0...0.5.0)
+
+**Upgrade notes**:
+
+*   `-R` and `set_mode_recursive()` no longer follow symlinks inside the tree. Use `-L` or `follow_symlinks=True` if you relied on that.
+*   On Windows, `get_mode()` ignores entries for accounts other than the owner, group, and "other" (e.g., *Administrators*), so some files read back with fewer "other" bits than before. "Write" no longer grants the right to change permissions or ownership.
+*   Symbolic `=` clears set-user-ID, set-group-ID, and sticky bits for the classes it sets, as GNU chmod does.
 
 **Security**:
 
