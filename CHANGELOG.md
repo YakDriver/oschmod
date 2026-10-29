@@ -10,6 +10,9 @@
 
 **Fixes**:
 
+*   Symbolic `=` now clears set-user-ID, set-group-ID, and sticky bits for the classes it sets, matching GNU chmod (#188). For example, `a=r` on a `4755` file gives `0444`, not `4444`. Directories keep set-user-ID and set-group-ID. `+` and `-` are unchanged.
+*   Invalid mode strings, including out-of-range octal strings like `"17777"`, raise `oschmod.ModeError` with the bad value in the message (e.g., `invalid mode modifier 'u+q'`) instead of `AttributeError` or a bare `int()` error (#191). `ModeError` subclasses both `ValueError` and `AttributeError`, so existing `except AttributeError` code still works. A non-string passed to `get_effective_mode()` raises `TypeError`, also an `AttributeError`.
+*   Windows: `get_owner()` and `get_group()` return `(sid_string, "", SidTypeUnknown)` instead of failing when the account can't be looked up, e.g., on a domain-joined machine that is offline (#190).
 *   Windows: when one account is both owner and group, or the group is Users, its bits are no longer merged across roles (#189). The first role applies, in the order owner, group, other, as on POSIX. Access granted to *Everyone* or *Authenticated Users* follows the account that holds "other", so with the group set to Users it reads as group bits.
 *   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior, including when the path is a single file. On Windows, an `other_sid` that matches an object's owner or group now raises `SidConflictError` (a `ValueError` subclass), which `on_error` receives so the walk can continue.
 *   `-R` no longer silently skips the contents of directories it can't list. It applies the directory's new mode first and tries again (#186).

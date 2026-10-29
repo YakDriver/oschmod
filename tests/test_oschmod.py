@@ -1,5 +1,6 @@
 """Tests for the oschmod library."""
 
+import os
 import stat
 import sys
 from pathlib import Path
@@ -89,9 +90,30 @@ def test_set_mode_rejects_bad_type(tmp_path, bad):
     assert oschmod.get_mode(path) == 0o644  # unchanged
 
 
-def test_bad_symbolic():
-    with pytest.raises(AttributeError):
-        oschmod.get_effective_mode(0o644, "u+q")
+@pytest.mark.parametrize("bad", ["u+q", "x+r", "u+r w", "u"])
+def test_bad_symbolic(bad):
+    with pytest.raises(oschmod.ModeError, match="invalid mode modifier") as exc_info:
+        oschmod.get_effective_mode(0o644, bad)
+    assert repr(bad) in str(exc_info.value)
+    # Backward compatible with code that caught AttributeError (#191).
+    assert isinstance(exc_info.value, ValueError)
+    assert isinstance(exc_info.value, AttributeError)
+
+
+def test_get_effective_mode_rejects_non_string():
+    with pytest.raises(TypeError) as exc_info:
+        oschmod.get_effective_mode(0o644, 123)  # type: ignore[arg-type]
+    assert isinstance(exc_info.value, AttributeError)
+
+
+@pytest.mark.parametrize("bad", ["u+q", "9", "rwx", ""])
+def test_set_mode_rejects_bad_mode_string(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    oschmod.set_mode(path, 0o644)
+    with pytest.raises(oschmod.ModeError):
+        oschmod.set_mode(path, bad)
+    assert oschmod.get_mode(path) == 0o644
 
 
 @pytest.mark.parametrize(
@@ -397,3 +419,78 @@ def test_symbolic_preserves_special_bits(tmp_path):
     oschmod.set_mode(directory, 0o1755)  # sticky bit
     oschmod.set_mode(directory, "g+w,o-rx")
     assert oschmod.get_full_mode(directory) == 0o1770
+
+
+# Recorded from GNU coreutils chmod 9.12: (start, mode, file result, dir result).
+GNU_SYMBOLIC_SPECIAL_BITS = [
+    (0o7755, "a=r", 0o0444, 0o6444),
+    (0o7755, "u=rwx", 0o3755, 0o7755),
+    (0o7755, "g=rx", 0o5755, 0o7755),
+    (0o7755, "o=rx", 0o6755, 0o6755),
+    (0o7755, "ug=rw", 0o1665, 0o7665),
+    (0o7755, "go=", 0o4700, 0o6700),
+    (0o7755, "=r", 0o0444, 0o6444),
+    (0o7755, "u=", 0o3055, 0o7055),
+    (0o7755, "a=", 0o0000, 0o6000),
+    (0o7755, "u+x", 0o7755, 0o7755),
+    (0o7755, "go-w", 0o7755, 0o7755),
+    (0o7755, "u=rw,g-x", 0o3645, 0o7645),
+    (0o4755, "a=r", 0o0444, 0o4444),
+    (0o4755, "u=rwx", 0o0755, 0o4755),
+    (0o4755, "g=rx", 0o4755, 0o4755),
+    (0o4755, "go=", 0o4700, 0o4700),
+    (0o2755, "g=rx", 0o0755, 0o2755),
+    (0o2755, "u=", 0o2055, 0o2055),
+    (0o1755, "a=r", 0o0444, 0o0444),
+    (0o1755, "o=rx", 0o0755, 0o0755),
+    (0o1755, "ug=rw", 0o1665, 0o1665),
+    (0o6644, "u=rwx", 0o2744, 0o6744),
+    (0o6644, "g=rx", 0o4654, 0o6654),
+    (0o6644, "u=rw,g-x", 0o2644, 0o6644),
+]
+
+
+@posix_only
+@pytest.mark.parametrize(("start", "mode", "file_result", "dir_result"), GNU_SYMBOLIC_SPECIAL_BITS)
+def test_symbolic_special_bits_match_gnu(tmp_path, start, mode, file_result, dir_result):
+    """'=' clears the set-ID/sticky bits of the classes it sets, like GNU (#188)."""
+    file_path = tmp_path / "f"
+    file_path.write_text("x")
+    dir_path = tmp_path / "d"
+    dir_path.mkdir()
+    for path, expected in ((file_path, file_result), (dir_path, dir_result)):
+        os.chmod(path, start)
+        if os.stat(path).st_mode & 0o7777 != start:
+            pytest.skip(f"filesystem doesn't keep {start:#o} on {path.name}")
+        oschmod.set_mode(path, mode)
+        assert oschmod.get_full_mode(path) == expected, (path.name, mode)
+    os.chmod(dir_path, 0o700)
+
+
+@posix_only
+def test_recursive_equals_clears_file_special_bits(tmp_path):
+    top = tmp_path / "t"
+    top.mkdir()
+    (top / "f").write_text("x")
+    os.chmod(top / "f", 0o4700)
+    os.chmod(top, 0o2700)
+    oschmod.set_mode_recursive(top, "u=rwx,go=")
+    assert oschmod.get_full_mode(top / "f") == 0o0700
+    assert oschmod.get_full_mode(top) == 0o2700  # directories keep set-ID bits
+
+
+@pytest.mark.parametrize("bad", ["17777", "77777777", "777777777777777777777777"])
+def test_out_of_range_mode_string_is_mode_error(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    with pytest.raises(oschmod.ModeError, match="out of range"):
+        oschmod.set_mode(path, bad)
+
+
+@pytest.mark.parametrize("bad", [-1, 0o10000])
+def test_out_of_range_int_mode_is_plain_value_error(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    with pytest.raises(ValueError, match="out of range") as exc_info:
+        oschmod.set_mode(path, bad)
+    assert not isinstance(exc_info.value, oschmod.ModeError)

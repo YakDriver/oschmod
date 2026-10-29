@@ -100,3 +100,8 @@ def test_very_verbose_shows_special_bits(tree, capsys):
     assert oschmod.cli.main(["-vv", "2750", str(target)]) == 0
     out = capsys.readouterr().out.strip()
     assert out == f"{target}: 0o4755 (rwsr-xr-x) -> 0o2750 (rwxr-s---)"
+
+
+def test_invalid_symbolic_mode_message(tree, capsys):
+    assert oschmod.cli.main(["u+q", str(tree / "a")]) == 1
+    assert capsys.readouterr().err.strip() == "oschmod: invalid mode modifier 'u+q'"
