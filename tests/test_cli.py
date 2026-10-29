@@ -132,6 +132,9 @@ def test_multiple_paths_recursive(tmp_path):
         top = tmp_path / name
         (top / "d").mkdir(parents=True)
         (top / "d" / "f").write_text("x")
+        # X keeps execute on files that already have it, and new files on Windows
+        # inherit full control, so start from a known non-executable mode.
+        oschmod.set_mode(top / "d" / "f", 0o644)
         tops.append(top)
     assert oschmod.cli.main(["-R", "u=rwX,go=", *map(str, tops)]) == 0
     for top in tops:
