@@ -317,3 +317,15 @@ def test_double_dash_with_reference(tmp_path, monkeypatch):
     oschmod.set_mode(tmp_path / "ref", 0o640)
     assert oschmod.cli.main(["--reference=ref", "--", "-f"]) == 0
     assert oschmod.get_mode(tmp_path / "-f") == 0o640
+
+
+def test_unknown_option_is_rejected(tree, capsys):
+    with pytest.raises(SystemExit):
+        oschmod.cli.main(["600", "--bogus", str(tree / "a")])
+    assert "unrecognized arguments: --bogus" in capsys.readouterr().err
+
+
+def test_no_operands(capsys):
+    with pytest.raises(SystemExit):
+        oschmod.cli.main([])
+    assert "a MODE and at least one FILE are required" in capsys.readouterr().err

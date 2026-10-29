@@ -98,7 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {oschmod.__version__}")
     parser.add_argument(
         "operands",
-        nargs="+",
+        nargs="*",
         metavar="MODE FILE",
         help="MODE is octal (e.g., 640) or symbolic (e.g., u=rw,g=r,o=, or a+rX); "
         "FILE is one or more files or directories (MODE is omitted with --reference)",
@@ -123,12 +123,32 @@ def _apply(obj: Any, args: argparse.Namespace) -> None:
         print(obj.path)
 
 
+def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace:
+    """Parse with options allowed after MODE or FILE (e.g., `oschmod 600 -v FILE`).
+
+    That matches GNU chmod and earlier versions. Everything after the first
+    `--` is an operand. It's split off here because Python 3.11's
+    parse_intermixed_args drops operands when `--` comes before all of them.
+    """
+    if "--" in argv:
+        split = argv.index("--")
+        argv, extra = argv[:split], argv[split + 1 :]
+    else:
+        extra = []
+    args, rest = parser.parse_known_intermixed_args(argv)
+    unknown = [arg for arg in rest if arg.startswith("-") and arg != "-"]
+    if unknown:
+        parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+    args.operands = [*(args.operands or []), *rest, *extra]
+    if not args.operands:
+        parser.error("a MODE and at least one FILE are required")
+    return args
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Provide main function for CLI."""
     parser = _build_parser()
-    # Intermixed parsing allows options after MODE (e.g., `oschmod 600 -v FILE`), as
-    # in GNU chmod and earlier versions; `--` still ends options.
-    args = parser.parse_intermixed_args(argv)
+    args = _parse(parser, sys.argv[1:] if argv is None else list(argv))
 
     if args.reference is None:
         if len(args.operands) < 2:
