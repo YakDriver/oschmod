@@ -279,6 +279,17 @@ def get_full_mode(path: PathType, other_sid: Any = None) -> int:
     return os.stat(path).st_mode & _FULL_MASK
 
 
+def copy_mode(src: PathType, dst: PathType, other_sid: Any = None) -> None:
+    """Give ``dst`` the same mode as ``src``, like ``chmod --reference=src dst``.
+
+    Includes set-user-ID, set-group-ID, and sticky bits on macOS and Linux. On
+    Windows, ``src``'s permissions are read and written as a mode (see
+    :func:`get_mode`), which, unlike ``shutil.copymode``, sets the ACL.
+    Symlinks are followed.
+    """
+    set_mode(dst, get_full_mode(src, other_sid), other_sid)
+
+
 def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
     """Set bitwise mode (stat) of object (dir or file).
 

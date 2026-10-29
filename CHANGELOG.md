@@ -10,6 +10,12 @@
     *   Copying another class's permissions, e.g., `g=u` or `o+g`.
     *   `s` (set-user-ID / set-group-ID) and `t` (sticky bit) on macOS and Linux, e.g., `g+s` or `+t`. `=` with `s` also sets or clears a directory's set-ID bits.
 *   `get_effective_mode()` takes `is_dir=` for `X`.
+*   New CLI options, as in GNU chmod (#195):
+    *   `-c`/`--changes`: like `-vv`, but only for objects whose mode changed.
+    *   `-f`/`--silent`/`--quiet`: don't print per-object errors. The exit status is still 1 if anything failed.
+    *   `--reference=RFILE`: use RFILE's mode, including set-ID and sticky bits, instead of a MODE argument.
+    *   `--recursive` and `--verbose` as long forms of `-R` and `-v`.
+*   Add `oschmod.copy_mode(src, dst)`, which, unlike `shutil.copymode()`, also sets permissions on Windows.
 *   The CLI accepts multiple paths, e.g., `oschmod 600 *.pem`. Each path is processed even if an earlier one fails; the exit status is 1 if any failed (#194). An invalid mode is reported once, before anything is changed.
 
 **Changes**:

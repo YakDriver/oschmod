@@ -153,7 +153,7 @@ def test_invalid_mode_is_reported_once_and_nothing_changes(tree, capsys):
 def test_object_is_required(capsys):
     with pytest.raises(SystemExit):
         oschmod.cli.main(["600"])
-    assert "required: object" in capsys.readouterr().err
+    assert "a MODE and at least one FILE are required" in capsys.readouterr().err
 
 
 def test_capital_x_recursive(tmp_path):
@@ -171,3 +171,107 @@ def test_capital_x_recursive(tmp_path):
     assert oschmod.get_mode(top / "d" / "script") == 0o755
     assert oschmod.get_mode(top / "d") == 0o755
     assert oschmod.get_mode(top) == 0o755
+
+
+# --- -c, -f, --reference, long options (#195) --------------------------------------
+
+
+def test_changes_reports_only_changed(tree, capsys):
+    a, b = tree / "a", tree / "sub" / "b"
+    oschmod.set_mode(a, 0o644)
+    oschmod.set_mode(b, 0o600)
+    assert oschmod.cli.main(["-c", "600", str(a), str(b)]) == 0
+    assert capsys.readouterr().out.splitlines() == [f"{a}: 0o644 (rw-r--r--) -> 0o600 (rw-------)"]
+    assert oschmod.cli.main(["--changes", "600", str(a), str(b)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_changes_overrides_verbose(tree, capsys):
+    a = tree / "a"
+    oschmod.set_mode(a, 0o600)
+    assert oschmod.cli.main(["-v", "-c", "600", str(a)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_changes_recursive(tree, capsys):
+    oschmod.set_mode_recursive(tree, 0o600, 0o700)
+    oschmod.set_mode(tree / "a", 0o644)
+    assert oschmod.cli.main(["-R", "-c", "u=rwX,go=", str(tree)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [f"{tree / 'a'}: 0o644 (rw-r--r--) -> 0o600 (rw-------)"]
+
+
+def test_silent_hides_errors_but_fails(tree, tmp_path, capsys):
+    missing = tmp_path / "missing"
+    assert oschmod.cli.main(["-f", "600", str(missing), str(tree / "a")]) == 1
+    assert capsys.readouterr().err == ""
+    assert oschmod.get_mode(tree / "a") == 0o600
+    for flag in ("--silent", "--quiet"):
+        assert oschmod.cli.main([flag, "600", str(missing)]) == 1
+        assert capsys.readouterr().err == ""
+
+
+def test_silent_still_reports_invalid_mode(tree, capsys):
+    """Like GNU, -f doesn't hide usage errors such as an invalid mode."""
+    assert oschmod.cli.main(["-f", "u+q", str(tree / "a")]) == 1
+    assert "invalid mode modifier" in capsys.readouterr().err
+
+
+def test_reference(tree):
+    ref, a, b = tree / "sub" / "b", tree / "a", tree / "sub"
+    oschmod.set_mode(ref, 0o640)
+    oschmod.set_mode(a, 0o600)
+    assert oschmod.cli.main([f"--reference={ref}", str(a)]) == 0
+    assert oschmod.get_mode(a) == 0o640
+    assert oschmod.cli.main(["--reference", str(ref), str(a), str(b)]) == 0
+    assert oschmod.get_mode(b) == 0o640
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX special bits")
+def test_reference_copies_special_bits(tmp_path):
+    ref, target = tmp_path / "ref", tmp_path / "target"
+    ref.write_text("x")
+    target.write_text("x")
+    ref.chmod(0o4700)
+    assert oschmod.cli.main([f"--reference={ref}", str(target)]) == 0
+    assert oschmod.get_full_mode(target) == 0o4700
+
+
+def test_reference_missing(tree, tmp_path, capsys):
+    oschmod.set_mode(tree / "a", 0o600)
+    missing = tmp_path / "nope"
+    assert oschmod.cli.main([f"--reference={missing}", str(tree / "a")]) == 1
+    assert capsys.readouterr().err.startswith(f"oschmod: {missing}: ")
+    assert oschmod.get_mode(tree / "a") == 0o600
+
+
+def test_reference_treats_all_operands_as_files(tree, capsys):
+    """Like GNU, '600' after --reference is a file name, not a mode."""
+    oschmod.set_mode(tree / "a", 0o640)
+    assert oschmod.cli.main([f"--reference={tree / 'a'}", "600", str(tree / "sub" / "b")]) == 1
+    assert "600: No such file or directory" in capsys.readouterr().err
+    assert oschmod.get_mode(tree / "sub" / "b") == 0o640
+
+
+def test_reference_recursive(tree):
+    ref = tree / "a"
+    oschmod.set_mode(ref, 0o750)
+    assert oschmod.cli.main(["-R", f"--reference={ref}", str(tree / "sub")]) == 0
+    assert oschmod.get_mode(tree / "sub") == 0o750
+    assert oschmod.get_mode(tree / "sub" / "b") == 0o750
+
+
+def test_long_options(tree, capsys):
+    assert oschmod.cli.main(["--recursive", "--verbose", "u=rwx,go=", str(tree)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == str(tree)
+    assert oschmod.get_mode(tree / "sub" / "b") == 0o700
+
+
+def test_copy_mode(tmp_path):
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.write_text("x")
+    dst.write_text("x")
+    oschmod.set_mode(src, 0o640)
+    oschmod.set_mode(dst, 0o600)
+    oschmod.copy_mode(src, dst)
+    assert oschmod.get_mode(dst) == 0o640
