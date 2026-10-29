@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import sys
 from collections.abc import Sequence
@@ -28,7 +29,7 @@ if sys.platform == "win32":
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oschmod",
-        description="Change the mode (permissions) of a file or directory",
+        description="Change the mode (permissions) of files and directories",
     )
     parser.add_argument("-R", action="store_true", help="apply mode recursively")
     links = parser.add_mutually_exclusive_group()
@@ -70,8 +71,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "(default: S-1-5-32-545, the built-in Users group)",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {oschmod.__version__}")
-    parser.add_argument("mode", help="octal or symbolic mode of the object")
-    parser.add_argument("object", help="file or directory")
+    parser.add_argument(
+        "mode", help="octal (e.g., 640) or symbolic (e.g., u=rw,g=r,o=, or a+rX) mode"
+    )
+    parser.add_argument("object", nargs="+", help="files or directories")
     return parser
 
 
@@ -94,7 +97,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Provide main function for CLI."""
     parser = _build_parser()
     args = parser.parse_args(argv)
-    obj: str = args.object
+
+    try:
+        # Check the mode once, before changing anything (it would fail for every object).
+        oschmod._resolve_mode_with(args.mode, lambda: 0, lambda: False)
+    except _ERRORS as exc:
+        print(f"oschmod: {exc}", file=sys.stderr)
+        return 1
 
     failed = False
 
@@ -103,30 +112,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         failed = True
         print(f"oschmod: {path}: {getattr(exc, 'strerror', None) or exc}", file=sys.stderr)
 
-    try:
-        if args.R and args.links == "P" and oschmod._is_link(obj):
-            return 0  # like GNU chmod -R -P: a symlink operand is neither followed nor changed
-        if not os.path.exists(obj):
-            raise FileNotFoundError(f"Path {obj} could not be found.")
-        if args.R and os.path.isdir(obj):
-            # Same traversal as oschmod.set_mode_recursive: contents first, root last.
-            oschmod._walk_apply(
-                obj,
-                lambda o: _apply(o, args.mode, args.verbose, args.other_sid),
-                follow_symlinks=args.links == "L",
-                on_error=report,
-            )
-        else:
-            _apply(
-                oschmod._PathObj(obj, oschmod.get_object_type(obj)),
-                args.mode,
-                args.verbose,
-                args.other_sid,
-            )
-    except _ERRORS as exc:
-        print(f"oschmod: {exc}", file=sys.stderr)
-        return 1
+    for obj in args.object:
+        try:
+            _process(obj, args, report)
+        except _ERRORS as exc:
+            report(obj, exc)
     return 1 if failed else 0
+
+
+def _process(obj: str, args: argparse.Namespace, report: oschmod.ErrorHandler) -> None:
+    """Apply the mode to one command-line object, recursively with -R."""
+    if args.R and args.links == "P" and oschmod._is_link(obj):
+        return  # like GNU chmod -R -P: a symlink operand is neither followed nor changed
+    if not os.path.exists(obj):
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", obj)
+    if args.R and os.path.isdir(obj):
+        # Same traversal as oschmod.set_mode_recursive: contents first, root last.
+        oschmod._walk_apply(
+            obj,
+            lambda o: _apply(o, args.mode, args.verbose, args.other_sid),
+            follow_symlinks=args.links == "L",
+            on_error=report,
+        )
+    else:
+        _apply(
+            oschmod._PathObj(obj, oschmod.get_object_type(obj)),
+            args.mode,
+            args.verbose,
+            args.other_sid,
+        )
 
 
 if __name__ == "__main__":

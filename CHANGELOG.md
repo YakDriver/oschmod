@@ -1,5 +1,21 @@
 ## Changelog
 
+### Unreleased
+
+**Features**:
+
+*   Symbolic modes support the full GNU chmod syntax (#192, #193):
+    *   `X`: execute/search only for directories and files that already have execute permission for someone, e.g., `oschmod -R a+rX dir`.
+    *   Chained operations, e.g., `u+r-x` or `go-w+r`.
+    *   Copying another class's permissions, e.g., `g=u` or `o+g`.
+    *   `s` (set-user-ID / set-group-ID) and `t` (sticky bit) on macOS and Linux, e.g., `g+s` or `+t`. `=` with `s` also sets or clears a directory's set-ID bits.
+*   `get_effective_mode()` takes `is_dir=` for `X`.
+*   The CLI accepts multiple paths, e.g., `oschmod 600 *.pem`. Each path is processed even if an earlier one fails; the exit status is 1 if any failed (#194). An invalid mode is reported once, before anything is changed.
+
+**Changes**:
+
+*   The CLI reports a missing path as `oschmod: <path>: No such file or directory`.
+
 ### 0.5.0
 
 **Commit Delta**: [Change from 0.4.0 release](https://github.com/YakDriver/oschmod/compare/0.4.0...0.5.0)
