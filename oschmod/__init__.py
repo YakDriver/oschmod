@@ -398,12 +398,25 @@ def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> 
         except pywinerror as exc:
             raise OSError(0, exc.strerror, path, exc.winerror) from exc
         return
-    # The umask can only remove bits, so the directory is never more open than
-    # new_mode. Then set the exact mode by the same path, without following a
-    # symlink (lchmod, fchmodat, or an O_PATH fd). Nothing is opened for reading,
-    # so this works when neither the new directory nor its parent is readable.
-    os.mkdir(path, new_mode & _PERM_MASK)
-    _PosixObj(path, DIRECTORY, name=path, nofollow=True).set_mode(new_mode)
+    # Pin the parent, then create and chmod relative to it, so swapping the
+    # parent between the two calls can't redirect the chmod. The name has no
+    # trailing slash, so a symlink that replaces the new directory isn't
+    # followed. Nothing is opened for reading: an unreadable parent works, as
+    # with os.mkdir. ".." isn't collapsed, since that could change the parent.
+    parent, name = os.path.split(path.rstrip("/") or path)
+    dir_fd = os.open(parent or ".", _SEARCH_FLAGS | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        # The umask can only remove bits, so the directory is never more open
+        # than new_mode; the chmod then sets it exactly.
+        os.mkdir(name, new_mode & _PERM_MASK, dir_fd=dir_fd)
+        _PosixObj(path, DIRECTORY, dir_fd=dir_fd, name=name, nofollow=True).set_mode(new_mode)
+    finally:
+        os.close(dir_fd)
+
+
+# Open a directory for use as dir_fd without needing read permission: O_PATH
+# on Linux, O_SEARCH on macOS and the BSDs. O_RDONLY elsewhere.
+_SEARCH_FLAGS = getattr(os, "O_PATH", 0) or getattr(os, "O_SEARCH", 0) or os.O_RDONLY
 
 
 def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
@@ -455,7 +468,9 @@ def _win_create_file(path: str, mode: int, other_sid: Any, read: bool, append: b
         handle = win32file.CreateFile(
             path,
             access,
-            0,  # no sharing while we hold it open, like open(path, "x")
+            # Same sharing as open(): the C runtime's _wopen shares read and write.
+            # CREATE_NEW, not the share mode, is what makes creation exclusive.
+            win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE,
             sa,
             win32file.CREATE_NEW,  # fails if path exists
             # Without this, CREATE_NEW follows a dangling symlink and creates its

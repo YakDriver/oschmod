@@ -1,6 +1,7 @@
 """open_new() and mkdir(): create with final permissions, no window (#196)."""
 
 import builtins
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -303,3 +304,64 @@ def test_mkdir_in_unreadable_parent(tmp_path, umask):
         assert oschmod.get_full_mode(parent / "c") == 0o755
     finally:
         parent.chmod(0o700)
+
+
+@posix_only
+def test_mkdir_trailing_slash(tmp_path):
+    oschmod.mkdir(f"{tmp_path / 'd'}/", 0o751)
+    assert oschmod.get_full_mode(tmp_path / "d") == 0o751
+
+
+@posix_only
+def test_mkdir_new_dir_replaced_by_symlink(tmp_path, monkeypatch):
+    """A symlink swapped in for the new directory is never followed, even with a trailing slash."""
+    victim = tmp_path / "victim"
+    victim.mkdir(0o700)
+    victim.chmod(0o700)
+    target = tmp_path / "d"
+    real_mkdir = os.mkdir
+
+    def swap(name, mode=0o777, *, dir_fd=None):
+        real_mkdir(name, mode, dir_fd=dir_fd)
+        os.rmdir(name, dir_fd=dir_fd)
+        os.symlink(victim, name, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", swap)
+    with contextlib.suppress(OSError):
+        oschmod.mkdir(f"{target}/", 0o755)
+    assert oschmod.get_full_mode(victim) == 0o700
+
+
+@posix_only
+def test_mkdir_parent_swapped(tmp_path, monkeypatch):
+    """Swapping the parent for a symlink after creation can't redirect the chmod."""
+    parent = tmp_path / "a"
+    parent.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    private = elsewhere / "new"
+    private.write_text("secret")
+    private.chmod(0o600)
+    real_mkdir = os.mkdir
+
+    def swap(name, mode=0o777, *, dir_fd=None):
+        real_mkdir(name, mode, dir_fd=dir_fd)
+        os.rename(parent, tmp_path / "a_old")
+        os.symlink(elsewhere, parent)
+
+    monkeypatch.setattr(os, "mkdir", swap)
+    oschmod.mkdir(parent / "new", 0o755)
+    assert oschmod.get_full_mode(private) == 0o600
+    assert oschmod.get_full_mode(tmp_path / "a_old" / "new") == 0o755
+
+
+def test_open_new_allows_other_handles_while_open(tmp_path):
+    """Like open(), the file isn't locked: other handles can read and write it."""
+    path = tmp_path / "f"
+    with oschmod.open_new(path, "w") as f:
+        f.write("one")
+        f.flush()
+        assert path.read_text() == "one"
+        with open(path, "a") as other:
+            other.write("two")
+    assert path.read_text() == "onetwo"
