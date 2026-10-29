@@ -8,6 +8,13 @@ import pytest
 
 import oschmod
 
+
+def _open_and_close(*args, **kwargs) -> None:
+    """Call open_new() where it should raise, closing the file if it doesn't."""
+    with oschmod.open_new(*args, **kwargs):
+        pass
+
+
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX modes and umask")
 
 
@@ -71,8 +78,8 @@ def test_open_new_never_more_open_than_perms(tmp_path, umask, monkeypatch):
 def test_open_new_refuses_existing(tmp_path):
     path = tmp_path / "f"
     path.write_text("keep")
-    with pytest.raises(FileExistsError), oschmod.open_new(path):
-        pass
+    with pytest.raises(FileExistsError):
+        _open_and_close(path)
     assert path.read_text() == "keep"
 
 
@@ -83,8 +90,8 @@ def test_open_new_refuses_symlink(tmp_path):
         os.symlink(target, link)
     except OSError as exc:
         pytest.skip(f"cannot create symlinks: {exc}")
-    with pytest.raises(FileExistsError), oschmod.open_new(link):
-        pass
+    with pytest.raises(FileExistsError):
+        _open_and_close(link)
     assert not target.exists()  # the dangling link's target was not created
 
 
@@ -125,14 +132,14 @@ def test_open_new_with_read_only_perms_can_still_write(tmp_path):
 
 @pytest.mark.parametrize("bad", ["r", "r+", "rb", "w+x", "wa", "", "wbt"])
 def test_open_new_rejects_modes(tmp_path, bad):
-    with pytest.raises(ValueError, match="invalid mode"), oschmod.open_new(tmp_path / "f", bad):
-        pass
+    with pytest.raises(ValueError, match="invalid mode"):
+        _open_and_close(tmp_path / "f", bad)
     assert not (tmp_path / "f").exists()
 
 
 def test_open_new_rejects_bad_perms(tmp_path):
-    with pytest.raises(oschmod.ModeError), oschmod.open_new(tmp_path / "f", perms="u+q"):
-        pass
+    with pytest.raises(oschmod.ModeError):
+        _open_and_close(tmp_path / "f", perms="u+q")
     assert not (tmp_path / "f").exists()
 
 
@@ -189,22 +196,19 @@ def test_mkdir_refuses_symlink(tmp_path):
 def test_open_new_bad_text_args_create_nothing(tmp_path, kwargs, error):
     """Errors are the same as open()'s, and no file is created or left behind."""
     path = tmp_path / "f"
-    with pytest.raises(error), oschmod.open_new(path, "w", **kwargs):
-        pass
+    with pytest.raises(error):
+        _open_and_close(path, "w", **kwargs)
     assert not path.exists()
 
 
 def test_open_new_binary_rejects_text_args(tmp_path):
     path = tmp_path / "f"
-    with (
-        pytest.raises(ValueError, match="encoding"),
-        oschmod.open_new(path, "wb", encoding="utf-8"),
-    ):
-        pass
-    with pytest.raises(ValueError, match="errors"), oschmod.open_new(path, "wb", errors="strict"):
-        pass
-    with pytest.raises(ValueError, match="newline"), oschmod.open_new(path, "wb", newline="\n"):
-        pass
+    with pytest.raises(ValueError, match="encoding"):
+        _open_and_close(path, "wb", encoding="utf-8")
+    with pytest.raises(ValueError, match="errors"):
+        _open_and_close(path, "wb", errors="strict")
+    with pytest.raises(ValueError, match="newline"):
+        _open_and_close(path, "wb", newline="\n")
     assert not path.exists()
 
 
@@ -218,8 +222,8 @@ def test_open_new_unbuffered_binary(tmp_path):
 def test_open_new_existing_file_is_not_removed(tmp_path):
     path = tmp_path / "f"
     path.write_text("keep")
-    with pytest.raises(FileExistsError), oschmod.open_new(path, "a"):
-        pass
+    with pytest.raises(FileExistsError):
+        _open_and_close(path, "a")
     assert path.read_text() == "keep"
 
 
