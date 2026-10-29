@@ -385,9 +385,9 @@ def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
 
 def _win_new_object_attributes(mode: int, object_type: int, other_sid: Any) -> Any:
     """SECURITY_ATTRIBUTES for a new file or directory with exactly ``mode``."""
-    token = win32security.OpenProcessToken(
-        win32security.GetCurrentProcess(), win32security.TOKEN_QUERY
-    )
+    import win32api  # noqa: PLC0415
+
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
     try:
         owner = win32security.GetTokenInformation(token, win32security.TokenOwner)
         group = win32security.GetTokenInformation(token, win32security.TokenPrimaryGroup)
