@@ -257,7 +257,10 @@ with oschmod.open_new("token.json", "w", perms=0o600) as f:
 oschmod.mkdir("keys", perms=0o700)
 ```
 
-`mode` can be `"w"`, `"x"`, or `"a"`, plus optional `"b"`/`"t"` and `"+"`. The umask doesn't apply, so the result is exactly `perms`. On Windows, the file or directory is created with the same protected DACL that `set_mode()` writes.
+* `open_new()` returns an ordinary file object, like `open()`. `mode` can be `"w"`, `"x"`, or `"a"`, plus optional `"b"`/`"t"` and `"+"`. It also takes `open()`'s `buffering`, `encoding`, `errors`, and `newline`. Invalid arguments raise before anything is created.
+* `oschmod.mkdir()` fails with `FileExistsError` like `os.mkdir()`, and never follows a symlink.
+* `perms` takes any mode `set_mode()` accepts, such as `0o600`, `"600"`, or `"u=rw"`. The umask doesn't apply, so the result is exactly `perms`.
+* On Windows, the file or directory is created with the same protected DACL that `set_mode()` writes. `other_sid` works as it does for `set_mode()`.
 
 To give one file the same mode as another, use `oschmod.copy_mode(src, dst)`. Unlike `shutil.copymode()`, it also works on Windows.
 
