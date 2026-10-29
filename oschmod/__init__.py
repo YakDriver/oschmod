@@ -316,10 +316,7 @@ def _resolve_mode_with(
         raise TypeError(f"mode must be int or str, not {type(mode).__name__}")
     if isinstance(mode, str):
         if "+" in mode or "-" in mode or "=" in mode:
-            current = current_mode()
-            perms = get_effective_mode(current & _PERM_MASK, mode)
-            special = _special_bits_after(current & _SPECIAL_MASK, mode, is_dir())
-            return perms | special
+            return get_effective_mode(current_mode(), mode, is_dir=is_dir())
         try:
             octal = int(mode, 8)
         except ValueError:
@@ -330,29 +327,6 @@ def _resolve_mode_with(
     if not 0 <= mode <= 0o7777:
         raise ValueError(f"mode {mode:#o} is out of range (0 to 0o7777)")
     return mode
-
-
-def _special_bits_after(special: int, symbolic: str, is_dir: bool) -> int:
-    """Set-user-ID, set-group-ID, and sticky bits after a symbolic mode, as in GNU chmod.
-
-    ``+`` and ``-`` (with ``rwx``) leave them alone. ``=`` clears the bits of the
-    classes it sets: ``u`` clears set-user-ID and ``g`` set-group-ID, except on
-    directories, which keep them; ``o`` clears the sticky bit (#188).
-    """
-    for clause in symbolic.split(","):
-        match = _SYMBOLIC_RE.match(clause)
-        if match is None or match.group(2) != "=":
-            continue
-        whom = match.group(1) or "ugo"
-        if "a" in whom:
-            whom = "ugo"
-        if "u" in whom and not is_dir:
-            special &= ~stat.S_ISUID
-        if "g" in whom and not is_dir:
-            special &= ~stat.S_ISGID
-        if "o" in whom:
-            special &= ~stat.S_ISVTX
-    return special
 
 
 class SidConflictError(ValueError):
@@ -821,19 +795,43 @@ def set_mode_recursive(  # noqa: PLR0913 (last two are keyword-only)
     _walk_apply(path, apply, follow_symlinks=follow_symlinks, on_error=on_error)
 
 
-def _get_effective_mode_multiple(current_mode: int, modes: str) -> int:
-    """Get octal mode, given current mode and symbolic mode modifiers."""
-    new_mode = current_mode
-    for mode in modes.split(","):
-        new_mode = get_effective_mode(new_mode, mode)
-    return new_mode
+# GNU chmod symbolic mode grammar:
+#   clause = [ugoa]* action+        action = [-+=] ([ugo] | [rwxXst]*)
+# [ugo] comes first: [rwxXst]* also matches the empty string.
+_CLAUSE_RE: Final = re.compile(r"([ugoa]*)((?:[-+=](?:[ugo]|[rwxXst]*))+)")
+_ACTION_RE: Final = re.compile(r"([-+=])([ugo]|[rwxXst]*)")
+_WHO_BITS: Final = {
+    "u": stat.S_ISUID | stat.S_IRWXU,
+    "g": stat.S_ISGID | stat.S_IRWXG,
+    "o": stat.S_ISVTX | stat.S_IRWXO,
+}
+_PERM_BITS: Final = {
+    "r": 0o444,
+    "w": 0o222,
+    "x": 0o111,
+    "s": stat.S_ISUID | stat.S_ISGID,
+    "t": stat.S_ISVTX,
+}
+_COPY_SHIFT: Final = {"u": 6, "g": 3, "o": 0}
+_SET_ID_BITS: Final = stat.S_ISUID | stat.S_ISGID
 
 
-_SYMBOLIC_RE: Final = re.compile(r"^\s*([ugoa]*)([-+=])([rwx]*)\s*$")
+def get_effective_mode(current_mode: int, symbolic: str, is_dir: bool = False) -> int:
+    """Apply a symbolic mode to ``current_mode`` and return the new mode.
 
+    Follows GNU chmod: comma-separated clauses of ``[ugoa]*`` and one or more
+    actions ``[-+=]`` with permissions ``[rwxXst]*`` or a class to copy
+    (``u``, ``g``, or ``o``), e.g. ``u+r-x,g=u,o-w,a+X,+t``.
 
-def get_effective_mode(current_mode: int, symbolic: str) -> int:
-    """Get octal mode, given current mode and symbolic mode modifier.
+    * ``X`` adds execute only if the object is a directory (``is_dir``) or
+      already has execute permission for someone.
+    * ``s`` is set-user-ID (with ``u``) and set-group-ID (with ``g``); ``t`` is
+      the sticky bit (with ``o``). With no ``ugoa``, both apply.
+    * ``=`` clears the bits of the classes it sets, including their set-ID and
+      sticky bits; directories keep set-user-ID and set-group-ID unless ``s``
+      is given.
+    * With no ``ugoa``, all classes are affected. Unlike GNU chmod, the umask is
+      not applied.
 
     Raises :class:`ModeError` (a ``ValueError``) for invalid syntax and
     ``TypeError`` if ``symbolic`` isn't a string. Both are also
@@ -842,40 +840,50 @@ def get_effective_mode(current_mode: int, symbolic: str) -> int:
     if not isinstance(symbolic, str):
         raise _ModeTypeError(f"symbolic must be a string, not {type(symbolic).__name__}")
 
-    if "," in symbolic:
-        return _get_effective_mode_multiple(current_mode, symbolic)
+    mode = current_mode
+    for clause in symbolic.split(","):
+        match = _CLAUSE_RE.fullmatch(clause.strip())
+        if match is None:
+            raise ModeError(f"invalid mode modifier {clause!r}")
+        mode = _apply_clause(mode, match.group(1), match.group(2), is_dir)
+    return mode
 
-    result = _SYMBOLIC_RE.match(symbolic)
-    if result is None:
-        raise ModeError(f"invalid mode modifier {symbolic!r}")
 
-    whom = result.group(1) or "ugo"
-    operation = result.group(2)
-    perm = result.group(3)
+def _action_bits(mode: int, perms: str, is_dir: bool) -> tuple[int, int]:
+    """Bits an action sets or clears in every class, and the bits named explicitly."""
+    if perms in _COPY_SHIFT:  # e.g. g=u: copy one class's rwx to the others
+        return ((mode >> _COPY_SHIFT[perms]) & 0o7) * 0o111, 0
+    value = 0
+    for letter in perms:
+        if letter != "X":
+            value |= _PERM_BITS[letter]
+        elif is_dir or mode & 0o111:
+            value |= 0o111
+    return value, value
 
-    if "a" in whom:
-        whom = "ugo"
 
-    # bitwise magic
-    bit_perm = _get_basic_symbol_to_mode(perm)
-    mask_mode = (
-        (bit_perm << 6 if "u" in whom else 0)
-        | (bit_perm << 3 if "g" in whom else 0)
-        | (bit_perm if "o" in whom else 0)
-    )
+def _apply_clause(mode: int, who: str, actions: str, is_dir: bool) -> int:
+    """Apply one clause, like gnulib's mode_adjust (with a umask of 0)."""
+    if not who or "a" in who:
+        affected = _FULL_MASK
+    else:
+        affected = 0
+        for letter in who:
+            affected |= _WHO_BITS[letter]
 
-    if operation == "=":
-        original = (
-            (current_mode & 0o700 if "u" not in whom else 0)
-            | (current_mode & 0o070 if "g" not in whom else 0)
-            | (current_mode & 0o007 if "o" not in whom else 0)
-        )
-        return mask_mode | original
-
-    if operation == "+":
-        return current_mode | mask_mode
-
-    return current_mode & ~mask_mode
+    for op, perms in _ACTION_RE.findall(actions):
+        value, mentioned = _action_bits(mode, perms, is_dir)
+        value &= affected
+        # Directories keep set-user-ID and set-group-ID unless "s" is given.
+        omit = _SET_ID_BITS & ~(mentioned & affected) if is_dir else 0
+        value &= ~omit
+        if op == "=":
+            mode = (mode & ((~affected & _FULL_MASK) | omit)) | value
+        elif op == "+":
+            mode |= value
+        else:
+            mode &= ~value
+    return mode
 
 
 def mode_to_symbolic(mode: int) -> str:
@@ -1029,11 +1037,6 @@ def win_get_permissions(path: PathType, other_sid: Any = None) -> int:
     path = _win_resolve(_fspath(path))
 
     return _win_get_permissions(path, get_object_type(path), other_sid)
-
-
-def _get_basic_symbol_to_mode(symbol: str) -> int:
-    """Calculate numeric value of set of 'rwx'."""
-    return (4 if "r" in symbol else 0) | (2 if "w" in symbol else 0) | (1 if "x" in symbol else 0)
 
 
 def _win_get_permissions(path: str, object_type: int, other_sid: Any = None) -> int:

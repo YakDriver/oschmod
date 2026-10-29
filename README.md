@@ -42,9 +42,13 @@ $ conda install -c conda-forge oschmod
 
 ***oschmod*** changes the file mode bits of each given file according to mode, which can be either a symbolic representation of changes to make, or an octal number representing the bit pattern for the new mode bits.
 
-The format of a symbolic mode is `[ugoa...][+-=][perms...]` where perms is zero or more letters from the set `rwx`. Multiple symbolic modes can be given, separated by commas.
+The format of a symbolic mode is `[ugoa...][[-+=][perms...]...]`, where perms is either zero or more letters from the set `rwxXst`, or a single letter from the set `ugo`. Multiple symbolic modes can be given, separated by commas.
 
-A combination of the letters `ugoa` controls which users' access to the file will be changed: the user who owns it (`u`), other users in the file's group (`g`), other users not in the file's group (`o`), or all users (`a`). If none of these are given, the effect is as if `a` were given.
+A combination of the letters `ugoa` controls which users' access to the file will be changed: the user who owns it (`u`), other users in the file's group (`g`), other users not in the file's group (`o`), or all users (`a`). If none of these are given, the effect is as if `a` were given. (GNU chmod also applies the umask in that case; ***oschmod*** doesn't.)
+
+The letters `rwxXst` select file mode bits for the affected users: read (`r`), write (`w`), execute or search for directories (`x`), execute/search only if the file is a directory or already has execute permission for some user (`X`), set user or group ID on execution (`s`), and restricted deletion flag or sticky bit (`t`). Instead of one or more of these letters, you can specify exactly one of the letters `ugo`: the permissions granted to the user who owns the file (`u`), the permissions granted to other users who are members of the file's group (`g`), and the permissions granted to users that are in neither of the two preceding categories (`o`).
+
+On Windows, `s` and `t` have no effect.
 
 *(Modified from the GNU manpage for chmod.)*
 
@@ -55,13 +59,14 @@ A combination of the letters `ugoa` controls which users' access to the file wil
 ```console
 $ oschmod -h
 usage: oschmod [-h] [-R] [-H | -L | -P] [-v] [--other-sid SID] [--version]
-               mode object
+               mode object [object ...]
 
-Change the mode (permissions) of a file or directory
+Change the mode (permissions) of files and directories
 
 positional arguments:
-  mode             octal or symbolic mode of the object
-  object           file or directory
+  mode             octal (e.g., 640) or symbolic (e.g., u=rw,g=r,o=, or a+rX)
+                   mode
+  object           files or directories
 
 options:
   -h, --help       show this help message and exit
@@ -89,8 +94,8 @@ You can use symbolic (e.g., "u+rw") or octal (e.g., "600") representations of mo
 Symbolic representation mode modifiers have three parts:
 
 1. **whom:** To whom does the modification apply? You can include zero or more of `[ugoa]*` where `a` is for all, `u` is for the file owner (i.e., "**u**ser"), `g` is for the file group, and `o` is for others. In other words, `ugo` is equivalent to `a`. Also, if you do not provide a "whom," ***oschmod*** assumes you mean `a` (everyone).
-2. **operation:** Which operation should be applied? You must include one and only one operation, `[+-=]{1}`, per modifier (although you can have multiple modifiers). `+` adds permissions, `-` removes permissions, and `=` sets permissions regardless of previous permissions. `+` and `-` modifications often depend on the current permissions.
-3. **permission:** Which permission or permissions will be affected? You can include zero or more of `[rwx]*` where `r` is for read, `w` is for write, and `x` is for execute. If you do not include a permission with `+` or `-` (e.g., `u-`), the modifier has no effect. However, if you use no permissions with `=` (e.g., `o=`), all permissions are removed.
+2. **operation:** Which operation should be applied? `+` adds permissions, `-` removes permissions, and `=` sets permissions regardless of previous permissions. You can chain operations for the same "whom" (e.g., `u+r-x`); each one applies to the result of the one before.
+3. **permission:** Which permission or permissions will be affected? You can include zero or more of `[rwxXst]*` where `r` is for read, `w` is for write, `x` is for execute, `X` is for execute only on directories and files that are already executable, `s` is set-user-ID or set-group-ID, and `t` is the sticky bit. Or you can give one of `u`, `g`, or `o` to copy that class's current permissions (e.g., `g=u`). If you do not include a permission with `+` or `-` (e.g., `u-`), the modifier has no effect. However, if you use no permissions with `=` (e.g., `o=`), all permissions are removed.
 
 **Example 1:** To give everyone execute permissions on a file (all of these are equivalent):
 
@@ -119,17 +124,29 @@ $ oschmod u+rx,go-x <file name>
 $ oschmod a+rwx,g-w,o-x <file name>
 ```
 
+**Example 5:** To make a tree readable by everyone, and make directories (but not ordinary files) enterable:
+
+```console
+$ oschmod -R a+rX <directory name>
+```
+
+**Example 6:** To give the group the same permissions as the owner, minus write:
+
+```console
+$ oschmod g=u-w <file name>
+```
+
 ### Octal representation examples
 
 For more about what octal representations mean, see [this article](https://medium.com/@dirk.avery/securing-files-on-windows-macos-and-linux-7b2b9899992) on Medium.
 
-**Example 5:** To give everyone read, write, and execute permissions on a file:
+**Example 7:** To give everyone read, write, and execute permissions on a file:
 
 ```console
 $ oschmod 777 <file name>
 ```
 
-**Example 6:** To lock down a file to just give the file owner read, write, and execute permissions and deny all permissions to everyone else:
+**Example 8:** To lock down a file to just give the file owner read, write, and execute permissions and deny all permissions to everyone else:
 
 ```console
 $ oschmod 700 <file name>
@@ -137,7 +154,7 @@ $ oschmod 700 <file name>
 
 ### Verbose output
 
-**Example 7:** Show each object as its mode is set (`-v`), or show old and new modes too (`-vv`):
+**Example 9:** Show each object as its mode is set (`-v`), or show old and new modes too (`-vv`):
 
 ```console
 $ oschmod -vv 600 secrets.txt
@@ -164,7 +181,7 @@ import oschmod
 oschmod.set_mode("myfile", "a+rwx,g-w,o-x")
 ```
 
-*Example 5* above, in Python code, could be done in two ways:
+*Example 7* above, in Python code, could be done in two ways:
 
 ```python
 import oschmod

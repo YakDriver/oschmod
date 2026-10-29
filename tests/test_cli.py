@@ -52,8 +52,9 @@ def test_quiet_by_default(tree, capsys):
 
 
 def test_missing_file(tmp_path, capsys):
-    assert oschmod.cli.main(["600", str(tmp_path / "missing")]) == 1
-    assert "could not be found" in capsys.readouterr().err
+    missing = tmp_path / "missing"
+    assert oschmod.cli.main(["600", str(missing)]) == 1
+    assert capsys.readouterr().err.strip() == f"oschmod: {missing}: No such file or directory"
 
 
 def test_bad_mode(tree, capsys):
@@ -105,3 +106,65 @@ def test_very_verbose_shows_special_bits(tree, capsys):
 def test_invalid_symbolic_mode_message(tree, capsys):
     assert oschmod.cli.main(["u+q", str(tree / "a")]) == 1
     assert capsys.readouterr().err.strip() == "oschmod: invalid mode modifier 'u+q'"
+
+
+# --- Multiple paths (#194) -------------------------------------------------------
+
+
+def test_multiple_paths(tree):
+    paths = [tree / "a", tree / "sub" / "b", tree / "sub"]
+    assert oschmod.cli.main(["700", *map(str, paths)]) == 0
+    for path in paths:
+        assert oschmod.get_mode(path) == 0o700
+
+
+def test_multiple_paths_keep_going_after_error(tree, tmp_path, capsys):
+    missing = tmp_path / "missing"
+    assert oschmod.cli.main(["600", str(missing), str(tree / "a"), str(tree / "sub" / "b")]) == 1
+    assert capsys.readouterr().err.strip() == f"oschmod: {missing}: No such file or directory"
+    assert oschmod.get_mode(tree / "a") == 0o600
+    assert oschmod.get_mode(tree / "sub" / "b") == 0o600
+
+
+def test_multiple_paths_recursive(tmp_path):
+    tops = []
+    for name in ("one", "two"):
+        top = tmp_path / name
+        (top / "d").mkdir(parents=True)
+        (top / "d" / "f").write_text("x")
+        tops.append(top)
+    assert oschmod.cli.main(["-R", "u=rwX,go=", *map(str, tops)]) == 0
+    for top in tops:
+        assert oschmod.get_mode(top / "d" / "f") == 0o600
+        assert oschmod.get_mode(top / "d") == 0o700
+        assert oschmod.get_mode(top) == 0o700
+
+
+def test_invalid_mode_is_reported_once_and_nothing_changes(tree, capsys):
+    oschmod.set_mode(tree / "a", 0o644)
+    assert oschmod.cli.main(["u+q", str(tree / "a"), str(tree / "sub" / "b")]) == 1
+    assert capsys.readouterr().err.strip() == "oschmod: invalid mode modifier 'u+q'"
+    assert oschmod.get_mode(tree / "a") == 0o644
+
+
+def test_object_is_required(capsys):
+    with pytest.raises(SystemExit):
+        oschmod.cli.main(["600"])
+    assert "required: object" in capsys.readouterr().err
+
+
+def test_capital_x_recursive(tmp_path):
+    """a+rX: the common idiom for 'make readable, and directories enterable' (#192)."""
+    top = tmp_path / "t"
+    (top / "d").mkdir(parents=True)
+    (top / "d" / "plain").write_text("x")
+    (top / "d" / "script").write_text("x")
+    oschmod.set_mode(top / "d" / "plain", 0o600)
+    oschmod.set_mode(top / "d" / "script", 0o700)
+    oschmod.set_mode(top / "d", 0o700)
+    oschmod.set_mode(top, 0o700)
+    assert oschmod.cli.main(["-R", "a+rX", str(top)]) == 0
+    assert oschmod.get_mode(top / "d" / "plain") == 0o644
+    assert oschmod.get_mode(top / "d" / "script") == 0o755
+    assert oschmod.get_mode(top / "d") == 0o755
+    assert oschmod.get_mode(top) == 0o755
