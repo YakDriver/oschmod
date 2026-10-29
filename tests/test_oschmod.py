@@ -472,8 +472,25 @@ def test_recursive_equals_clears_file_special_bits(tmp_path):
     top = tmp_path / "t"
     top.mkdir()
     (top / "f").write_text("x")
-    os.chmod(top / "f", 0o4750)
-    os.chmod(top, 0o2750)
-    oschmod.set_mode_recursive(top, "u=rwx,go=rx")
-    assert oschmod.get_full_mode(top / "f") == 0o0755
-    assert oschmod.get_full_mode(top) == 0o2755  # directories keep set-ID bits
+    os.chmod(top / "f", 0o4700)
+    os.chmod(top, 0o2700)
+    oschmod.set_mode_recursive(top, "u=rwx,go=")
+    assert oschmod.get_full_mode(top / "f") == 0o0700
+    assert oschmod.get_full_mode(top) == 0o2700  # directories keep set-ID bits
+
+
+@pytest.mark.parametrize("bad", ["17777", "77777777", "777777777777777777777777"])
+def test_out_of_range_mode_string_is_mode_error(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    with pytest.raises(oschmod.ModeError, match="out of range"):
+        oschmod.set_mode(path, bad)
+
+
+@pytest.mark.parametrize("bad", [-1, 0o10000])
+def test_out_of_range_int_mode_is_plain_value_error(tmp_path, bad):
+    path = tmp_path / "f"
+    path.write_text("x")
+    with pytest.raises(ValueError, match="out of range") as exc_info:
+        oschmod.set_mode(path, bad)
+    assert not isinstance(exc_info.value, oschmod.ModeError)

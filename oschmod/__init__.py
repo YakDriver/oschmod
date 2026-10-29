@@ -321,9 +321,12 @@ def _resolve_mode_with(
             special = _special_bits_after(current & _SPECIAL_MASK, mode, is_dir())
             return perms | special
         try:
-            mode = int(mode, 8)
+            octal = int(mode, 8)
         except ValueError:
             raise ModeError(f"invalid mode {mode!r}") from None
+        if not 0 <= octal <= 0o7777:
+            raise ModeError(f"mode {mode!r} is out of range (0 to 7777)")
+        return octal
     if not 0 <= mode <= 0o7777:
         raise ValueError(f"mode {mode:#o} is out of range (0 to 0o7777)")
     return mode
