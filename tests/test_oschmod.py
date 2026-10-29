@@ -472,8 +472,8 @@ def test_recursive_equals_clears_file_special_bits(tmp_path):
     top = tmp_path / "t"
     top.mkdir()
     (top / "f").write_text("x")
-    os.chmod(top / "f", 0o4755)
-    os.chmod(top, 0o2755)
+    os.chmod(top / "f", 0o4750)
+    os.chmod(top, 0o2750)
     oschmod.set_mode_recursive(top, "u=rwx,go=rx")
     assert oschmod.get_full_mode(top / "f") == 0o0755
     assert oschmod.get_full_mode(top) == 0o2755  # directories keep set-ID bits
