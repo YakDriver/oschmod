@@ -275,3 +275,45 @@ def test_copy_mode(tmp_path):
     oschmod.set_mode(dst, 0o600)
     oschmod.copy_mode(src, dst)
     assert oschmod.get_mode(dst) == 0o640
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["600", "-v", "{f}"],
+        ["600", "{f}", "-v"],
+        ["-R", "600", "-v", "{f}"],
+        ["600", "-R", "{f}"],
+        ["600", "--recursive", "{f}", "-c"],
+    ],
+)
+def test_options_after_mode(tree, capsys, argv):
+    """Options may follow MODE or FILE, as in GNU chmod and oschmod 0.5."""
+    target = tree / "a"
+    oschmod.set_mode(target, 0o644)
+    assert oschmod.cli.main([a.format(f=target) for a in argv]) == 0
+    assert oschmod.get_mode(target) == 0o600
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows SID handling")
+def test_other_sid_after_mode(tree):
+    target = tree / "a"
+    assert oschmod.cli.main(["604", "--other-sid", "S-1-5-11", str(target)]) == 0
+    assert oschmod.get_mode(target, other_sid="S-1-5-11") == 0o604
+
+
+def test_double_dash_for_hyphen_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "-v").write_text("x")
+    oschmod.set_mode(tmp_path / "-v", 0o644)
+    assert oschmod.cli.main(["600", "--", "-v"]) == 0
+    assert oschmod.get_mode(tmp_path / "-v") == 0o600
+
+
+def test_double_dash_with_reference(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ref").write_text("x")
+    (tmp_path / "-f").write_text("x")
+    oschmod.set_mode(tmp_path / "ref", 0o640)
+    assert oschmod.cli.main(["--reference=ref", "--", "-f"]) == 0
+    assert oschmod.get_mode(tmp_path / "-f") == 0o640

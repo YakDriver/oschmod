@@ -126,7 +126,9 @@ def _apply(obj: Any, args: argparse.Namespace) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     """Provide main function for CLI."""
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    # Intermixed parsing allows options after MODE (e.g., `oschmod 600 -v FILE`), as
+    # in GNU chmod and earlier versions; `--` still ends options.
+    args = parser.parse_intermixed_args(argv)
 
     if args.reference is None:
         if len(args.operands) < 2:
