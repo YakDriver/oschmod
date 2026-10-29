@@ -58,29 +58,36 @@ On Windows, `s` and `t` have no effect.
 
 ```console
 $ oschmod -h
-usage: oschmod [-h] [-R] [-H | -L | -P] [-v] [--other-sid SID] [--version]
-               mode object [object ...]
+usage: oschmod [options] MODE FILE...
+       oschmod [options] --reference=RFILE FILE...
 
 Change the mode (permissions) of files and directories
 
 positional arguments:
-  mode             octal (e.g., 640) or symbolic (e.g., u=rw,g=r,o=, or a+rX)
-                   mode
-  object           files or directories
+  MODE FILE             MODE is octal (e.g., 640) or symbolic (e.g.,
+                        u=rw,g=r,o=, or a+rX); FILE is one or more files or
+                        directories (MODE is omitted with --reference)
 
 options:
-  -h, --help       show this help message and exit
-  -R               apply mode recursively
-  -H               with -R, follow the object if it is a symlink, but no links
-                   below it (default)
-  -L               with -R, follow every symlink (changes link targets, even
-                   outside the tree)
-  -P               with -R, follow no symlinks
-  -v               verbose: show each object as its mode is set; repeat (-vv)
-                   to also show old and new modes
-  --other-sid SID  Windows only: SID that receives "other" permissions
-                   (default: S-1-5-32-545, the built-in Users group)
-  --version        show program's version number and exit
+  -h, --help            show this help message and exit
+  -R, --recursive       apply mode recursively
+  -H                    with -R, follow the object if it is a symlink, but no
+                        links below it (default)
+  -L                    with -R, follow every symlink (changes link targets,
+                        even outside the tree)
+  -P                    with -R, follow no symlinks
+  -v, --verbose         verbose: show each object as its mode is set; repeat
+                        (-vv) to also show old and new modes
+  -c, --changes         like -vv, but report only objects whose mode changed
+                        (overrides -v)
+  -f, --silent, --quiet
+                        don't print errors for individual objects (the exit
+                        status is still 1)
+  --reference RFILE     use RFILE's mode instead of a MODE argument (symlinks
+                        are followed)
+  --other-sid SID       Windows only: SID that receives "other" permissions
+                        (default: S-1-5-32-545, the built-in Users group)
+  --version             show program's version number and exit
 ```
 
 You can also run it as `python -m oschmod`.
@@ -161,6 +168,20 @@ $ oschmod -vv 600 secrets.txt
 secrets.txt: 0o644 (rw-r--r--) -> 0o600 (rw-------)
 ```
 
+**Example 10:** Report only objects whose mode actually changed (`-c`), and hide per-file errors (`-f`; the exit status is still 1 if anything failed):
+
+```console
+$ oschmod -c -R u=rwX,go= project
+project/notes.txt: 0o644 (rw-r--r--) -> 0o600 (rw-------)
+$ oschmod -f 600 *.pem
+```
+
+**Example 11:** Give files the same mode as another file:
+
+```console
+$ oschmod --reference=template.cfg app.cfg db.cfg
+```
+
 ### Recursion and symlinks
 
 With `-R`, symlinks found inside the tree are **not** followed, so nothing outside the tree is changed. This is the same as GNU `chmod -R` and is the safe choice, especially when running as root or Administrator on a directory that others can write to. On Windows, directory junctions are treated the same way as symlinks.
@@ -222,6 +243,8 @@ oschmod.set_mode("myfile2", 0o777)
 `get_mode()` returns only the read/write/execute bits (`0o777`). On macOS and Linux, use `get_full_mode()` to also include set-user-ID, set-group-ID, and sticky bits (`0o7777`). Symbolic `+` and `-` (e.g., `g+w`) leave those special bits as they are. As in GNU chmod, `=` clears them for the classes it sets: `u=` clears set-user-ID, `g=` set-group-ID, and `o=` the sticky bit. Directories keep their set-user-ID and set-group-ID bits.
 
 An invalid mode string raises `oschmod.ModeError`, a `ValueError`.
+
+To give one file the same mode as another, use `oschmod.copy_mode(src, dst)`. Unlike `shutil.copymode()`, it also works on Windows.
 
 `set_mode_recursive()` skips symlinks below the path by default. Pass `follow_symlinks=True` to follow them. Errors stop the walk unless you pass `on_error`, which is called with the path and exception for each failure:
 
