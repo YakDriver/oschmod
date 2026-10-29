@@ -1,5 +1,6 @@
 """open_new() and mkdir(): create with final permissions, no window (#196)."""
 
+import builtins
 import os
 import sys
 from pathlib import Path
@@ -245,3 +246,60 @@ def test_mkdir_relative_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     oschmod.mkdir("rel", 0o750)
     assert oschmod.get_mode(tmp_path / "rel") == 0o750
+
+
+def test_open_new_failure_after_check_keeps_existing_file(tmp_path):
+    """An error from open() before anything is created never removes an existing file."""
+    path = tmp_path / "f"
+    path.write_text("keep")
+    with pytest.raises((OverflowError, FileExistsError)):
+        _open_and_close(path, buffering=2**100)
+    assert path.read_text() == "keep"
+
+
+def test_open_new_failure_after_create_removes_only_its_file(tmp_path, monkeypatch):
+    """If open() fails after the opener created the file, that file is removed."""
+    path = tmp_path / "f"
+
+    def failing_open(file, *args, **kwargs):
+        os.close(kwargs["opener"](os.fspath(file), 0))  # create the file, as open() would
+        raise MemoryError
+
+    with monkeypatch.context() as m, pytest.raises(MemoryError):
+        m.setattr(builtins, "open", failing_open)
+        _open_and_close(path)
+    assert not path.exists()
+
+
+def test_open_new_locale_encoding(tmp_path):
+    path = tmp_path / "f"
+    with oschmod.open_new(path, encoding="locale") as f:
+        f.write("x")
+    assert path.read_text() == "x"
+
+
+@posix_only
+def test_mkdir_dotdot_through_symlink(tmp_path, monkeypatch):
+    """Creation and chmod address the same object: '..' after a symlink isn't collapsed."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "real" / "sub").mkdir(parents=True)
+    os.symlink("real/sub", "link")
+    oschmod.mkdir("link/../new", 0o710)
+    assert oschmod.get_full_mode(tmp_path / "real" / "new") == 0o710
+    assert not (tmp_path / "new").exists()
+
+
+@posix_only
+@pytest.mark.skipif(sys.platform != "win32" and os.geteuid() == 0, reason="root ignores modes")
+def test_mkdir_in_unreadable_parent(tmp_path, umask):
+    """A write+search-only parent is enough, as for os.mkdir."""
+    umask(0o077)
+    parent = tmp_path / "p"
+    parent.mkdir(0o700)
+    parent.chmod(0o300)
+    try:
+        oschmod.mkdir(parent / "c", 0o755)
+        parent.chmod(0o700)
+        assert oschmod.get_full_mode(parent / "c") == 0o755
+    finally:
+        parent.chmod(0o700)

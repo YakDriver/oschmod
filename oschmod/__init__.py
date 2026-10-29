@@ -330,10 +330,16 @@ def open_new(  # noqa: PLR0913 (mirrors open())
     read = "+" in mode
     append = mode[0] == "a"
 
+    created: list[tuple[int, int]] = []  # (st_dev, st_ino) of the file this call made
+
     def opener(name: str, _flags: int) -> int:
         if IS_WINDOWS:
-            return _win_create_file(name, new_mode, other_sid, read, append)
-        return _posix_create_file(name, new_mode, read, append)
+            fd = _win_create_file(name, new_mode, other_sid, read, append)
+        else:
+            fd = _posix_create_file(name, new_mode, read, append)
+        st = os.fstat(fd)
+        created.append((st.st_dev, st.st_ino))
+        return fd
 
     # open() owns the descriptor from here: if wrapping fails, it closes it once.
     # "x" makes open() itself require a new file; the opener does the creating.
@@ -349,11 +355,13 @@ def open_new(  # noqa: PLR0913 (mirrors open())
             opener=opener,
         )
     except BaseException:
-        # Arguments were checked first, so this is rare (e.g., out of memory). Don't
-        # leave behind a file we created; never remove one we didn't (FileExistsError).
-        if sys.exc_info()[0] is not FileExistsError and os.path.lexists(path):
+        # open() failed after creating the file (rare: arguments were checked
+        # first). Remove it only if it is still the file this call created.
+        if created:
             with contextlib.suppress(OSError):
-                os.remove(path)
+                st = os.lstat(path)
+                if (st.st_dev, st.st_ino) == created[0]:
+                    os.remove(path)
         raise
 
 
@@ -368,7 +376,8 @@ def _check_open_args(
         return
     if buffering == 0:
         raise ValueError("can't have unbuffered text I/O")
-    if encoding is not None:
+    # "locale" is open()'s name for the locale encoding, not a codec
+    if encoding is not None and encoding != "locale":
         codecs.lookup(encoding)  # LookupError for unknown encodings
     if newline not in (None, "", "\n", "\r", "\r\n"):
         raise ValueError(f"illegal newline value: {newline!r}")
@@ -390,16 +399,11 @@ def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> 
             raise OSError(0, exc.strerror, path, exc.winerror) from exc
         return
     # The umask can only remove bits, so the directory is never more open than
-    # new_mode. Then set the exact mode without following a symlink, relative to
-    # the parent directory. Opening the new directory itself would need read
-    # permission, which new_mode or the umask may not grant.
+    # new_mode. Then set the exact mode by the same path, without following a
+    # symlink (lchmod, fchmodat, or an O_PATH fd). Nothing is opened for reading,
+    # so this works when neither the new directory nor its parent is readable.
     os.mkdir(path, new_mode & _PERM_MASK)
-    parent, name = os.path.split(os.path.normpath(path))
-    dir_fd = os.open(parent or ".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    try:
-        _PosixObj(path, DIRECTORY, dir_fd=dir_fd, name=name, nofollow=True).set_mode(new_mode)
-    finally:
-        os.close(dir_fd)
+    _PosixObj(path, DIRECTORY, name=path, nofollow=True).set_mode(new_mode)
 
 
 def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
