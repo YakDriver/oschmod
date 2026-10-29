@@ -57,7 +57,7 @@ def test_open_new_never_more_open_than_perms(tmp_path, umask, monkeypatch):
     seen: list[int] = []
     real_open = os.open
 
-    def spy(path, flags, mode=0o777, *args, **kwargs):
+    def spy(path, flags, mode=0o600, *args, **kwargs):
         seen.append(mode)
         return real_open(path, flags, mode, *args, **kwargs)
 
@@ -176,3 +176,62 @@ def test_mkdir_refuses_symlink(tmp_path):
     with pytest.raises(FileExistsError):
         oschmod.mkdir(link)
     assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        ({"buffering": 0}, ValueError),
+        ({"encoding": "no-such-codec"}, LookupError),
+        ({"newline": "bad"}, ValueError),
+    ],
+)
+def test_open_new_bad_text_args_create_nothing(tmp_path, kwargs, error):
+    """Errors are the same as open()'s, and no file is created or left behind."""
+    path = tmp_path / "f"
+    with pytest.raises(error):
+        oschmod.open_new(path, "w", **kwargs)
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("arg", ["encoding", "errors", "newline"])
+def test_open_new_binary_rejects_text_args(tmp_path, arg):
+    path = tmp_path / "f"
+    with pytest.raises(ValueError, match="binary mode"):
+        oschmod.open_new(path, "wb", **{arg: "utf-8" if arg != "newline" else "\n"})
+    assert not path.exists()
+
+
+def test_open_new_unbuffered_binary(tmp_path):
+    path = tmp_path / "f"
+    with oschmod.open_new(path, "wb", buffering=0) as f:
+        f.write(b"x")
+    assert path.read_bytes() == b"x"
+
+
+def test_open_new_existing_file_is_not_removed(tmp_path):
+    path = tmp_path / "f"
+    path.write_text("keep")
+    with pytest.raises(FileExistsError):
+        oschmod.open_new(path, "a")
+    assert path.read_text() == "keep"
+
+
+@posix_only
+@pytest.mark.parametrize(("perms", "mask"), [(0o300, 0o022), (0o700, 0o777), (0o000, 0o022)])
+def test_mkdir_without_read_permission(tmp_path, umask, perms, mask):
+    """The final mode is set without opening the new directory, which may be unreadable."""
+    umask(mask)
+    path = tmp_path / "d"
+    try:
+        oschmod.mkdir(path, perms)
+        assert oschmod.get_full_mode(path) == perms
+    finally:
+        if path.exists():
+            path.chmod(0o700)
+
+
+def test_mkdir_relative_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    oschmod.mkdir("rel", 0o750)
+    assert oschmod.get_mode(tmp_path / "rel") == 0o750

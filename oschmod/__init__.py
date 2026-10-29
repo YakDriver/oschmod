@@ -27,6 +27,8 @@ Paths may be given as ``str`` or any ``os.PathLike`` (e.g., ``pathlib.Path``).
 
 from __future__ import annotations
 
+import codecs
+import contextlib
 import errno
 import functools
 import os
@@ -323,22 +325,53 @@ def open_new(  # noqa: PLR0913 (mirrors open())
     path = _fspath(path)
     if not isinstance(mode, str) or not _OPEN_NEW_MODE_RE.fullmatch(mode):
         raise ValueError(f"invalid mode {mode!r}: use 'w', 'x', or 'a', with optional 'b'/'t'/'+'")
+    _check_open_args("b" in mode, buffering, encoding, errors, newline)
     new_mode = _resolve_mode_with(perms, lambda: 0, lambda: False)
     read = "+" in mode
     append = mode[0] == "a"
-    fd = (
-        _win_create_file(path, new_mode, other_sid, read, append)
-        if IS_WINDOWS
-        else _posix_create_file(path, new_mode, read, append)
-    )
-    fdopen_mode = ("a" if append else "w") + mode[1:]
+
+    def opener(name: str, _flags: int) -> int:
+        if IS_WINDOWS:
+            return _win_create_file(name, new_mode, other_sid, read, append)
+        return _posix_create_file(name, new_mode, read, append)
+
+    # open() owns the descriptor from here: if wrapping fails, it closes it once.
+    # "x" makes open() itself require a new file; the opener does the creating.
+    open_mode = "x" + mode[1:] if mode[0] != "a" else mode
     try:
-        return os.fdopen(
-            fd, fdopen_mode, buffering, encoding=encoding, errors=errors, newline=newline
+        return open(  # returned to the caller, like open()
+            path,
+            open_mode,
+            buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+            opener=opener,
         )
     except BaseException:
-        os.close(fd)
+        # Arguments were checked first, so this is rare (e.g., out of memory). Don't
+        # leave behind a file we created; never remove one we didn't (FileExistsError).
+        if sys.exc_info()[0] is not FileExistsError and os.path.lexists(path):
+            with contextlib.suppress(OSError):
+                os.remove(path)
         raise
+
+
+def _check_open_args(
+    binary: bool, buffering: int, encoding: str | None, errors: str | None, newline: str | None
+) -> None:
+    """Reject arguments open() would reject, before the file is created."""
+    if binary:
+        for name, value in (("encoding", encoding), ("errors", errors), ("newline", newline)):
+            if value is not None:
+                raise ValueError(f"binary mode doesn't take an {name} argument")
+        return
+    if buffering == 0:
+        raise ValueError("can't have unbuffered text I/O")
+    if encoding is not None:
+        codecs.lookup(encoding)  # LookupError for unknown encodings
+    if newline not in (None, "", "\n", "\r", "\r\n"):
+        raise ValueError(f"illegal newline value: {newline!r}")
 
 
 def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> None:
@@ -357,13 +390,16 @@ def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> 
             raise OSError(0, exc.strerror, path, exc.winerror) from exc
         return
     # The umask can only remove bits, so the directory is never more open than
-    # new_mode. Then set the exact mode through a no-follow fd.
+    # new_mode. Then set the exact mode without following a symlink, relative to
+    # the parent directory. Opening the new directory itself would need read
+    # permission, which new_mode or the umask may not grant.
     os.mkdir(path, new_mode & _PERM_MASK)
-    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    parent, name = os.path.split(os.path.normpath(path))
+    dir_fd = os.open(parent or ".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        os.chmod(fd, new_mode)
+        _PosixObj(path, DIRECTORY, dir_fd=dir_fd, name=name, nofollow=True).set_mode(new_mode)
     finally:
-        os.close(fd)
+        os.close(dir_fd)
 
 
 def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
