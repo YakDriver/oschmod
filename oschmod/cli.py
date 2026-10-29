@@ -81,10 +81,10 @@ def _format_mode(mode: int) -> str:
 
 def _apply(obj: Any, mode: str, verbose: int, other_sid: str | None) -> None:
     """Set mode on a single object, reporting according to verbosity."""
-    old_mode = obj.get_full_mode() if verbose > 1 else 0
+    old_mode = obj.get_full_mode(other_sid) if verbose > 1 else 0
     obj.set_mode(mode, other_sid)
     if verbose > 1:
-        new_mode = obj.get_full_mode()
+        new_mode = obj.get_full_mode(other_sid)
         print(f"{obj.path}: {_format_mode(old_mode)} -> {_format_mode(new_mode)}")
     elif verbose:
         print(obj.path)
