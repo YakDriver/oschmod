@@ -1023,7 +1023,13 @@ def _win_mode_from_sd(sec_des: Any, object_type: int, other_sid: Any = None) -> 
     if dacl is None:  # NULL DACL: everyone has full access
         return _PERM_MASK
     roles = _win_roles(sec_des, other_sid)
-    broader = _win_broader_sids(win_get_other_sid(other_sid))
+    other = win_get_other_sid(other_sid)
+    broader = _win_broader_sids(other)
+    # Broader groups' access belongs to whichever role holds the "other" SID:
+    # OTHER, or GROUP/OWNER when that SID also fills an earlier role (e.g., the
+    # primary group is Users). Otherwise it would read as "o" bits that the
+    # writer never stores, and an unrelated change would drop that access.
+    other_role = next(t for t, role_sid in roles if role_sid == other)
     mode = 0
 
     for index in range(dacl.GetAceCount()):
@@ -1040,7 +1046,7 @@ def _win_mode_from_sd(sec_des: Any, object_type: int, other_sid: Any = None) -> 
             continue
         user_type = next((t for t, role_sid in roles if role_sid == sid), None)
         if user_type is None and sid in broader:
-            user_type = OTHER
+            user_type = other_role
         if user_type is not None:
             mode |= convert_win_to_stat(mask, user_type, object_type)
 

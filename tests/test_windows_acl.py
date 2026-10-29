@@ -255,3 +255,22 @@ def test_system_deny_ace_is_not_turned_into_allow(private_file):
     sec.SetFileSecurity(str(private_file), sec.DACL_SECURITY_INFORMATION, sd)
     oschmod.set_mode(private_file, 0o600)
     assert oschmod.SYSTEM_SID not in _aces(private_file)
+
+
+def test_broader_group_access_follows_users_when_users_is_group(tmp_path):
+    """With group = Users, Everyone's access is Users' access, so it reads as group bits.
+
+    Before, it read as "o" bits, which aren't stored when Users is the group, so
+    an owner-only change like u-x removed Users' read access.
+    """
+    path = tmp_path / "f.txt"
+    path.write_text("x")
+    _set_dacl(
+        path,
+        [(_owner(path), FULL), (EVERYONE, con.FILE_GENERIC_READ)],
+        group=oschmod.USERS_SID,
+    )
+    assert oschmod.get_mode(path) == 0o740
+    oschmod.set_mode(path, "u-x")
+    assert _aces(path)[oschmod.USERS_SID] & con.FILE_GENERIC_READ == con.FILE_GENERIC_READ
+    assert oschmod.get_mode(path) == 0o640

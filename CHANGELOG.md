@@ -10,7 +10,7 @@
 
 **Fixes**:
 
-*   Windows: when one account is both owner and group, or the group is Users, its bits are no longer merged across roles (#189). The first role applies, in the order owner, group, other, as on POSIX.
+*   Windows: when one account is both owner and group, or the group is Users, its bits are no longer merged across roles (#189). The first role applies, in the order owner, group, other, as on POSIX. Access granted to *Everyone* or *Authenticated Users* follows the account that holds "other", so with the group set to Users it reads as group bits.
 *   `-R` reports each error, keeps going, and exits 1 at the end instead of stopping partway through (#187). `set_mode_recursive()` accepts `on_error=` for the same behavior, including when the path is a single file. On Windows, an `other_sid` that matches an object's owner or group now raises `SidConflictError` (a `ValueError` subclass), which `on_error` receives so the walk can continue.
 *   `-R` no longer silently skips the contents of directories it can't list. It applies the directory's new mode first and tries again (#186).
 *   On Windows, `set_mode()` and `get_mode()` on a symlink or junction now act on its target, as they do on macOS and Linux. Previously they changed or read the link itself.
