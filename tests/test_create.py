@@ -71,8 +71,8 @@ def test_open_new_never_more_open_than_perms(tmp_path, umask, monkeypatch):
 def test_open_new_refuses_existing(tmp_path):
     path = tmp_path / "f"
     path.write_text("keep")
-    with pytest.raises(FileExistsError):
-        oschmod.open_new(path)
+    with pytest.raises(FileExistsError), oschmod.open_new(path):
+        pass
     assert path.read_text() == "keep"
 
 
@@ -83,8 +83,8 @@ def test_open_new_refuses_symlink(tmp_path):
         os.symlink(target, link)
     except OSError as exc:
         pytest.skip(f"cannot create symlinks: {exc}")
-    with pytest.raises(FileExistsError):
-        oschmod.open_new(link)
+    with pytest.raises(FileExistsError), oschmod.open_new(link):
+        pass
     assert not target.exists()  # the dangling link's target was not created
 
 
@@ -125,14 +125,14 @@ def test_open_new_with_read_only_perms_can_still_write(tmp_path):
 
 @pytest.mark.parametrize("bad", ["r", "r+", "rb", "w+x", "wa", "", "wbt"])
 def test_open_new_rejects_modes(tmp_path, bad):
-    with pytest.raises(ValueError, match="invalid mode"):
-        oschmod.open_new(tmp_path / "f", bad)
+    with pytest.raises(ValueError, match="invalid mode"), oschmod.open_new(tmp_path / "f", bad):
+        pass
     assert not (tmp_path / "f").exists()
 
 
 def test_open_new_rejects_bad_perms(tmp_path):
-    with pytest.raises(oschmod.ModeError):
-        oschmod.open_new(tmp_path / "f", perms="u+q")
+    with pytest.raises(oschmod.ModeError), oschmod.open_new(tmp_path / "f", perms="u+q"):
+        pass
     assert not (tmp_path / "f").exists()
 
 
@@ -189,16 +189,19 @@ def test_mkdir_refuses_symlink(tmp_path):
 def test_open_new_bad_text_args_create_nothing(tmp_path, kwargs, error):
     """Errors are the same as open()'s, and no file is created or left behind."""
     path = tmp_path / "f"
-    with pytest.raises(error):
-        oschmod.open_new(path, "w", **kwargs)
+    with pytest.raises(error), oschmod.open_new(path, "w", **kwargs):
+        pass
     assert not path.exists()
 
 
 @pytest.mark.parametrize("arg", ["encoding", "errors", "newline"])
 def test_open_new_binary_rejects_text_args(tmp_path, arg):
     path = tmp_path / "f"
-    with pytest.raises(ValueError, match="binary mode"):
-        oschmod.open_new(path, "wb", **{arg: "utf-8" if arg != "newline" else "\n"})
+    with (
+        pytest.raises(ValueError, match="binary mode"),
+        oschmod.open_new(path, "wb", **{arg: "utf-8" if arg != "newline" else "\n"}),
+    ):
+        pass
     assert not path.exists()
 
 
@@ -212,8 +215,8 @@ def test_open_new_unbuffered_binary(tmp_path):
 def test_open_new_existing_file_is_not_removed(tmp_path):
     path = tmp_path / "f"
     path.write_text("keep")
-    with pytest.raises(FileExistsError):
-        oschmod.open_new(path, "a")
+    with pytest.raises(FileExistsError), oschmod.open_new(path, "a"):
+        pass
     assert path.read_text() == "keep"
 
 
