@@ -194,13 +194,16 @@ def test_open_new_bad_text_args_create_nothing(tmp_path, kwargs, error):
     assert not path.exists()
 
 
-@pytest.mark.parametrize("arg", ["encoding", "errors", "newline"])
-def test_open_new_binary_rejects_text_args(tmp_path, arg):
+def test_open_new_binary_rejects_text_args(tmp_path):
     path = tmp_path / "f"
     with (
-        pytest.raises(ValueError, match="binary mode"),
-        oschmod.open_new(path, "wb", **{arg: "utf-8" if arg != "newline" else "\n"}),
+        pytest.raises(ValueError, match="encoding"),
+        oschmod.open_new(path, "wb", encoding="utf-8"),
     ):
+        pass
+    with pytest.raises(ValueError, match="errors"), oschmod.open_new(path, "wb", errors="strict"):
+        pass
+    with pytest.raises(ValueError, match="newline"), oschmod.open_new(path, "wb", newline="\n"):
         pass
     assert not path.exists()
 
