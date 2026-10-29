@@ -1,5 +1,11 @@
 ## Changelog
 
+### Unreleased
+
+**Features**:
+
+*   Add `oschmod.open_new(path, mode="w", perms=0o600)` and `oschmod.mkdir(path, perms=0o700)` to create files and directories that have their final permissions from the moment they exist, with no window where others can open them (#196). They fail if the path already exists, including a symlink. The umask doesn't apply. On Windows, the protected DACL is passed to `CreateFile`/`CreateDirectory`.
+
 ### 0.6.0
 
 **Commit Delta**: [Change from 0.5.0 release](https://github.com/YakDriver/oschmod/compare/0.5.0...0.6.0)

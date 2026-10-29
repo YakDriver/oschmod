@@ -35,8 +35,9 @@ import random
 import re
 import stat
 import string
+import sys
 from collections.abc import Callable
-from typing import Any, Final
+from typing import IO, Any, Final
 
 __version__ = "0.6.0"
 
@@ -288,6 +289,149 @@ def copy_mode(src: PathType, dst: PathType, other_sid: Any = None) -> None:
     Symlinks are followed.
     """
     set_mode(dst, get_full_mode(src, other_sid), other_sid)
+
+
+_OPEN_NEW_MODE_RE: Final = re.compile(r"[wxa]\+?[bt]?|[wxa][bt]\+")
+
+
+def open_new(  # noqa: PLR0913 (mirrors open())
+    path: PathType,
+    mode: str = "w",
+    perms: ModeType = 0o600,
+    *,
+    other_sid: Any = None,
+    buffering: int = -1,
+    encoding: str | None = None,
+    errors: str | None = None,
+    newline: str | None = None,
+) -> IO[Any]:
+    """Create a new file that has ``perms`` from the moment it exists, and open it.
+
+    Use this instead of ``open()`` followed by :func:`set_mode` for secrets, so
+    no one else can open the file in between (#196). The file must not exist:
+    like ``open(path, "x")``, this raises ``FileExistsError`` otherwise, including
+    when ``path`` is a symlink.
+
+    ``mode`` is ``"w"``, ``"x"``, or ``"a"`` (all create the file), optionally with
+    ``"b"`` or ``"t"`` and ``"+"`` to also read. ``perms`` is a mode such as
+    ``0o600``, ``"600"``, or ``"u=rw"`` (applied to no permissions). The umask
+    doesn't apply. Other arguments are as in ``open()``.
+
+    On Windows, the file is created with the protected DACL that ``set_mode``
+    would write; ``other_sid`` is as in :func:`set_mode`.
+    """
+    path = _fspath(path)
+    if not isinstance(mode, str) or not _OPEN_NEW_MODE_RE.fullmatch(mode):
+        raise ValueError(f"invalid mode {mode!r}: use 'w', 'x', or 'a', with optional 'b'/'t'/'+'")
+    new_mode = _resolve_mode_with(perms, lambda: 0, lambda: False)
+    read = "+" in mode
+    append = mode[0] == "a"
+    fd = (
+        _win_create_file(path, new_mode, other_sid, read, append)
+        if IS_WINDOWS
+        else _posix_create_file(path, new_mode, read, append)
+    )
+    fdopen_mode = ("a" if append else "w") + mode[1:]
+    try:
+        return os.fdopen(
+            fd, fdopen_mode, buffering, encoding=encoding, errors=errors, newline=newline
+        )
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def mkdir(path: PathType, perms: ModeType = 0o700, *, other_sid: Any = None) -> None:
+    """Create a directory that has ``perms`` from the moment it exists.
+
+    Like ``os.mkdir``, raises ``FileExistsError`` if ``path`` exists. The umask
+    doesn't apply. ``perms`` and ``other_sid`` are as in :func:`open_new`.
+    """
+    path = _fspath(path)
+    new_mode = _resolve_mode_with(perms, lambda: 0, lambda: True)
+    if IS_WINDOWS:
+        sa = _win_new_object_attributes(new_mode, DIRECTORY, other_sid)
+        try:
+            win32file.CreateDirectory(path, sa)
+        except pywinerror as exc:
+            raise OSError(0, exc.strerror, path, exc.winerror) from exc
+        return
+    # The umask can only remove bits, so the directory is never more open than
+    # new_mode. Then set the exact mode through a no-follow fd.
+    os.mkdir(path, new_mode & _PERM_MASK)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        os.chmod(fd, new_mode)
+    finally:
+        os.close(fd)
+
+
+def _posix_create_file(path: str, mode: int, read: bool, append: bool) -> int:
+    flags = os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    flags |= os.O_RDWR if read else os.O_WRONLY
+    if append:
+        flags |= os.O_APPEND
+    # O_EXCL fails if anything, even a dangling symlink, is at path. The umask can
+    # only remove bits, so the file is never more open than mode; fchmod then sets
+    # the exact mode (including bits the umask removed and special bits).
+    fd = os.open(path, flags, mode & _PERM_MASK)
+    try:
+        os.chmod(fd, mode)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _win_new_object_attributes(mode: int, object_type: int, other_sid: Any) -> Any:
+    """SECURITY_ATTRIBUTES for a new file or directory with exactly ``mode``."""
+    token = win32security.OpenProcessToken(
+        win32security.GetCurrentProcess(), win32security.TOKEN_QUERY
+    )
+    try:
+        owner = win32security.GetTokenInformation(token, win32security.TokenOwner)
+        group = win32security.GetTokenInformation(token, win32security.TokenPrimaryGroup)
+    finally:
+        token.Close()
+    sec_des = win32security.SECURITY_DESCRIPTOR()
+    sec_des.SetSecurityDescriptorOwner(owner, False)
+    sec_des.SetSecurityDescriptorGroup(group, False)
+    _win_update_sd(sec_des, mode, object_type, other_sid)
+    sa = win32security.SECURITY_ATTRIBUTES()
+    sa.SECURITY_DESCRIPTOR = sec_des
+    sa.bInheritHandle = False  # pywin32 defaults to True
+    return sa
+
+
+def _win_create_file(path: str, mode: int, other_sid: Any, read: bool, append: bool) -> int:
+    """Create a new file with its final DACL in one step; return a C runtime fd."""
+    if sys.platform != "win32":  # pragma: no cover - for type checkers
+        raise NotImplementedError
+    import msvcrt  # noqa: PLC0415
+
+    sa = _win_new_object_attributes(mode, FILE, other_sid)
+    access = ntsecuritycon.GENERIC_WRITE | (ntsecuritycon.GENERIC_READ if read else 0)
+    try:
+        handle = win32file.CreateFile(
+            path,
+            access,
+            0,  # no sharing while we hold it open, like open(path, "x")
+            sa,
+            win32file.CREATE_NEW,  # fails if path exists, including a symlink
+            win32file.FILE_ATTRIBUTE_NORMAL,
+            None,
+        )
+    except pywinerror as exc:
+        raise OSError(0, exc.strerror, path, exc.winerror) from exc
+    flags = (os.O_RDWR if read else os.O_WRONLY) | (os.O_APPEND if append else 0)
+    raw = handle.Detach()
+    try:
+        return msvcrt.open_osfhandle(raw, flags)
+    except BaseException:
+        import win32api  # noqa: PLC0415
+
+        win32api.CloseHandle(raw)
+        raise
 
 
 def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
