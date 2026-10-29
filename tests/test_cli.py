@@ -218,9 +218,11 @@ def test_silent_still_reports_invalid_mode(tree, capsys):
 
 
 def test_reference(tree):
-    ref, a, b = tree / "sub" / "b", tree / "a", tree / "sub"
+    ref, a, b = tree / "sub" / "b", tree / "a", tree / "c"
+    b.write_text("x")
     oschmod.set_mode(ref, 0o640)
     oschmod.set_mode(a, 0o600)
+    oschmod.set_mode(b, 0o600)
     assert oschmod.cli.main([f"--reference={ref}", str(a)]) == 0
     assert oschmod.get_mode(a) == 0o640
     assert oschmod.cli.main(["--reference", str(ref), str(a), str(b)]) == 0

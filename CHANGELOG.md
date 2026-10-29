@@ -1,6 +1,8 @@
 ## Changelog
 
-### Unreleased
+### 0.6.0
+
+**Commit Delta**: [Change from 0.5.0 release](https://github.com/YakDriver/oschmod/compare/0.5.0...0.6.0)
 
 **Features**:
 
