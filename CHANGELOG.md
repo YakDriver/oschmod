@@ -5,7 +5,7 @@
 **Security**:
 
 *   Recursive mode changes (`-R` and `set_mode_recursive()`) no longer follow symlinks found inside the tree, which could change files outside it (#183). On Windows, directory junctions are skipped as well. Use `-L` or `follow_symlinks=True` to follow them. This also holds if someone replaces a file or directory with a link while the walk is running: on macOS and Linux, oschmod works relative to already-open directories and never follows the last path component; on Windows, it changes each object through a handle and refuses any that resolves outside the tree.
-*   Windows: reading a mode no longer counts access for unrelated accounts, such as *Administrators*, as "other" access. Before, a symbolic change like `u+x` on a typical file could give all Users full access (#185). Inherit-only entries are ignored too. `get_mode()` and `get_full_mode()` accept `other_sid`.
+*   Windows: reading a mode no longer counts access for unrelated accounts, such as *Administrators*, as "other" access. Before, a symbolic change like `u+x` on a typical file could give all Users full access (#185). *Everyone* still counts as "other" for any `other_sid`, and *Authenticated Users* counts only for the default Users, since it doesn't include every account (e.g., Guest). Inherit-only and object entries are ignored, and entries pywin32 can't read no longer cause errors. `get_mode()` and `get_full_mode()` accept `other_sid`.
 *   Windows: "write" no longer grants `WRITE_DAC` or `WRITE_OWNER`, so `oschmod 666` no longer lets Users change a file's permissions or take ownership (#184). Files previously set by oschmod read back the same. Explorer's *Modify* permission now reads as `rwx`.
 
 **Fixes**:

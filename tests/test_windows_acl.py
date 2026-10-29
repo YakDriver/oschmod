@@ -189,3 +189,69 @@ def test_group_equal_to_users_uses_group_bits(tmp_path):
     assert oschmod.get_mode(path) == 0o600
     oschmod.set_mode(path, 0o640)
     assert oschmod.get_mode(path) == 0o640
+
+
+# --- Review fixes on #203 ------------------------------------------------------
+
+
+def test_object_ace_is_skipped(private_file):
+    """Object ACEs unpack to five fields; they must be skipped, not crash reads."""
+    import pywintypes  # noqa: PLC0415
+
+    sd = sec.GetFileSecurity(str(private_file), sec.DACL_SECURITY_INFORMATION)
+    dacl = sd.GetSecurityDescriptorDacl()
+    dacl.AddAccessAllowedObjectAce(
+        sec.ACL_REVISION_DS,
+        0,
+        FULL,
+        pywintypes.IID("{00000000-0000-0000-0000-000000000001}"),
+        None,
+        _sid(oschmod.USERS_SID),
+    )
+    sd.SetSecurityDescriptorDacl(1, dacl, 0)
+    sec.SetFileSecurity(str(private_file), sec.DACL_SECURITY_INFORMATION, sd)
+
+    assert oschmod.get_mode(private_file) == 0o700
+    oschmod.set_mode(private_file, "u-x")  # symbolic: reads, then rewrites the DACL
+    assert oschmod.get_mode(private_file) == 0o600
+    assert oschmod.USERS_SID not in _aces(private_file)
+
+
+def test_unsupported_ace_type_is_skipped():
+    """pywin32 raises NotImplementedError for some ACE types (e.g., callback ACEs)."""
+
+    class UnsupportedAcl:
+        def GetAce(self, index):  # pywin32 API name
+            raise NotImplementedError("Ace type 9 is not supported yet")
+
+    assert oschmod._win_ace(UnsupportedAcl(), 0) is None
+
+
+def test_authenticated_users_is_not_other_when_other_is_everyone(tmp_path):
+    """Authenticated Users doesn't include Guest, so it isn't "other" for Everyone."""
+    path = tmp_path / "f.txt"
+    path.write_text("x")
+    _set_dacl(path, [(_owner(path), FULL), (AUTHENTICATED_USERS, con.FILE_GENERIC_READ)])
+    assert oschmod.get_mode(path, other_sid=EVERYONE) == 0o700
+    oschmod.set_mode(path, "u-x", other_sid=EVERYONE)
+    assert EVERYONE not in _aces(path)
+
+
+def test_everyone_is_other_for_any_other_sid(tmp_path):
+    path = tmp_path / "f.txt"
+    path.write_text("x")
+    _set_dacl(path, [(_owner(path), FULL), (EVERYONE, con.FILE_GENERIC_READ)])
+    assert oschmod.get_mode(path, other_sid=AUTHENTICATED_USERS) == 0o704
+    assert oschmod.get_mode(path, other_sid=BACKUP_OPERATORS) == 0o704
+
+
+def test_system_deny_ace_is_not_turned_into_allow(private_file):
+    sd = sec.GetFileSecurity(str(private_file), sec.DACL_SECURITY_INFORMATION)
+    dacl = sd.GetSecurityDescriptorDacl()
+    dacl.AddAccessDeniedAceEx(
+        sec.ACL_REVISION_DS, 0, con.FILE_GENERIC_WRITE, _sid(oschmod.SYSTEM_SID)
+    )
+    sd.SetSecurityDescriptorDacl(1, dacl, 0)
+    sec.SetFileSecurity(str(private_file), sec.DACL_SECURITY_INFORMATION, sd)
+    oschmod.set_mode(private_file, 0o600)
+    assert oschmod.SYSTEM_SID not in _aces(private_file)

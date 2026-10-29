@@ -83,9 +83,16 @@ USERS_SID: Final = "S-1-5-32-545"
 
 EVERYONE_SID: Final = "S-1-1-0"
 AUTHENTICATED_USERS_SID: Final = "S-1-5-11"
-# Groups that include every user in the "other" SID, so their access is also
-# "other" access when reading a mode.
-_BROADER_THAN_OTHER: Final = (EVERYONE_SID, AUTHENTICATED_USERS_SID)
+# For each "other" SID, groups known to include all of its members: access
+# granted to them is also "other" access when reading a mode. Everyone includes
+# every account. Authenticated Users includes Users, but not everyone (e.g.,
+# Guest), so it only counts when "other" is Users (#185).
+_BROADER_THAN: Final = {
+    USERS_SID: (EVERYONE_SID, AUTHENTICATED_USERS_SID),
+    AUTHENTICATED_USERS_SID: (EVERYONE_SID,),
+    EVERYONE_SID: (),
+}
+_BROADER_THAN_ANY: Final = (EVERYONE_SID,)
 
 if HAS_PYWIN32:
     W_FLDIR = ntsecuritycon.FILE_LIST_DIRECTORY  # =                        1
@@ -983,24 +990,49 @@ def _win_roles(sec_des: Any, other_sid: Any = None) -> list[tuple[int, Any]]:
     return roles
 
 
+def _win_ace(dacl: Any, index: int) -> tuple[int, int, int, Any] | None:
+    """Return (type, flags, mask, SID) for an ACE, or None if pywin32 can't read it.
+
+    pywin32 returns ((type, flags), mask, sid) for standard ACEs, but
+    ((type, flags), mask, object_type, inherited_object_type, sid) for object
+    ACEs, and raises NotImplementedError for others (e.g., callback ACEs).
+    """
+    try:
+        ace = dacl.GetAce(index)
+    except NotImplementedError:
+        return None
+    (ace_type, ace_flags), mask = ace[0], ace[1]
+    return ace_type, ace_flags, mask, ace[-1]
+
+
+def _win_broader_sids(other: Any) -> list[Any]:
+    """SIDs whose access also counts as access for the "other" SID."""
+    broader = _BROADER_THAN.get(win32security.ConvertSidToStringSid(other), _BROADER_THAN_ANY)
+    return [win32security.ConvertStringSidToSid(s) for s in broader]
+
+
 def _win_mode_from_sd(sec_des: Any, object_type: int, other_sid: Any = None) -> int:
     """Compute a mode from a security descriptor with owner, group, and DACL.
 
     Only ACEs for the owner, the group, the "other" SID, and groups that include
-    everyone in "other" (Everyone, Authenticated Users) count. ACEs for other
-    accounts, such as Administrators, are ignored: counting them as "other" would
-    make the next symbolic change grant their access to all Users (#185).
+    all of "other" (see _BROADER_THAN) count. ACEs for other accounts, such as
+    Administrators, are ignored: counting them as "other" would make the next
+    symbolic change grant their access to everyone in "other" (#185).
     """
     dacl = sec_des.GetSecurityDescriptorDacl()
     if dacl is None:  # NULL DACL: everyone has full access
         return _PERM_MASK
     roles = _win_roles(sec_des, other_sid)
-    broader = [win32security.ConvertStringSidToSid(s) for s in _BROADER_THAN_OTHER]
+    broader = _win_broader_sids(win_get_other_sid(other_sid))
     mode = 0
 
     for index in range(dacl.GetAceCount()):
-        (ace_type, ace_flags), mask, sid = dacl.GetAce(index)
-        # Deny ACEs aren't handled; inherit-only ACEs apply to children, not this object.
+        ace = _win_ace(dacl, index)
+        if ace is None:
+            continue
+        ace_type, ace_flags, mask, sid = ace
+        # Only plain allow ACEs count (deny and object ACEs aren't handled);
+        # inherit-only ACEs apply to children, not this object.
         if (
             ace_type != win32security.ACCESS_ALLOWED_ACE_TYPE
             or ace_flags & ntsecuritycon.INHERIT_ONLY_ACE
@@ -1054,16 +1086,22 @@ def _win_update_sd(sec_des: Any, mode: int, object_type: int, other_sid: Any = N
             system_sid,
         )
 
-    system_ace = None
+    # Keep SYSTEM's access (plain allow ACEs only; never turn a deny into an allow).
+    system_mask = 0
     for _ in range(dacl.GetAceCount()):
-        ace = dacl.GetAce(0)
-        if ace[2] == system_sid:
-            system_ace = ace
+        ace = _win_ace(dacl, 0)
+        if (
+            ace is not None
+            and ace[0] == win32security.ACCESS_ALLOWED_ACE_TYPE
+            and not ace[1] & ntsecuritycon.INHERIT_ONLY_ACE
+            and ace[3] == system_sid
+        ):
+            system_mask |= ace[2]
         dacl.DeleteAce(0)
 
-    if system_ace:
+    if system_mask:
         dacl.AddAccessAllowedAceEx(
-            dacl.GetAclRevision(), win32security.NO_INHERITANCE, system_ace[1], system_ace[2]
+            dacl.GetAclRevision(), win32security.NO_INHERITANCE, system_mask, system_sid
         )
 
     for user_type, sid in _win_roles(sec_des, other_sid):
@@ -1174,14 +1212,18 @@ def _print_win_obj_info(path: str) -> None:
         return
 
     for ace_no in range(dacl.GetAceCount()):
-        ace = dacl.GetAce(ace_no)
         print("ACE", ace_no)
+        ace = _win_ace(dacl, ace_no)
+        if ace is None:
+            print("  (ACE type not supported by pywin32)")
+            continue
+        ace_type, ace_flags, mask, sid = ace
 
-        print("  -SID:", _win_sid_display(ace[2]))
+        print("  -SID:", _win_sid_display(sid))
 
-        print_win_ace_type(ace[0][0])
-        print_win_inheritance(ace[0][1])
-        print_win_permissions(ace[1], ace[0][1], get_object_type(path))
+        print_win_ace_type(ace_type)
+        print_win_inheritance(ace_flags)
+        print_win_permissions(mask, ace_flags, get_object_type(path))
 
 
 def perm_test(mode: int = stat.S_IRUSR | stat.S_IWUSR) -> None:
