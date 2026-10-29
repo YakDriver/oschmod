@@ -81,6 +81,19 @@ SYSTEM_SID: Final = "S-1-5-18"
 USERS_SID: Final = "S-1-5-32-545"
 """Well-known SID for the built-in Users group (default for "others")."""
 
+EVERYONE_SID: Final = "S-1-1-0"
+AUTHENTICATED_USERS_SID: Final = "S-1-5-11"
+# For each "other" SID, groups known to include all of its members: access
+# granted to them is also "other" access when reading a mode. Everyone includes
+# every account. Authenticated Users includes Users, but not everyone (e.g.,
+# Guest), so it only counts when "other" is Users (#185).
+_BROADER_THAN: Final = {
+    USERS_SID: (EVERYONE_SID, AUTHENTICATED_USERS_SID),
+    AUTHENTICATED_USERS_SID: (EVERYONE_SID,),
+    EVERYONE_SID: (),
+}
+_BROADER_THAN_ANY: Final = (EVERYONE_SID,)
+
 if HAS_PYWIN32:
     W_FLDIR = ntsecuritycon.FILE_LIST_DIRECTORY  # =                        1
     W_FADFL = ntsecuritycon.FILE_ADD_FILE  # =                             10
@@ -105,22 +118,14 @@ if HAS_PYWIN32:
     W_GENRD = ntsecuritycon.GENERIC_READ  # -10000000000000000000000000000000
 
     W_DIRRD = W_FLDIR | W_FRDEA | W_FRDAT | W_RDCON | W_SYNCH
-    W_DIRWR = (
-        W_FADFL
-        | W_FADSD
-        | W_FWREA
-        | W_FDLCH
-        | W_FWRAT
-        | W_DELET
-        | W_RDCON
-        | W_WRDAC
-        | W_WROWN
-        | W_SYNCH
-    )
+    # "w" never includes WRITE_DAC or WRITE_OWNER: on POSIX, write permission
+    # doesn't let anyone chmod or chown (#184). The owner can always change the
+    # DACL anyway (Windows grants an object's owner READ_CONTROL and WRITE_DAC).
+    W_DIRWR = W_FADFL | W_FADSD | W_FWREA | W_FDLCH | W_FWRAT | W_DELET | W_RDCON | W_SYNCH
     W_DIREX = W_FTRAV | W_RDCON | W_SYNCH
 
     W_FILRD = W_FGNRD
-    W_FILWR = W_FDLCH | W_DELET | W_WRDAC | W_WROWN | W_FGNWR
+    W_FILWR = W_FGNWR | W_DELET  # Explorer's "Modify" includes these, so it reads as rwx
     W_FILEX = W_FGNEX
 
     WIN_RWX_PERMS = [[W_FILRD, W_FILWR, W_FILEX], [W_DIRRD, W_DIRWR, W_DIREX]]
@@ -238,22 +243,26 @@ def _not_found(path: str) -> FileNotFoundError:
     return FileNotFoundError(f"Path {path} could not be found.")
 
 
-def get_mode(path: PathType) -> int:
-    """Get bitwise mode (stat) of object (dir or file)."""
+def get_mode(path: PathType, other_sid: Any = None) -> int:
+    """Get bitwise mode (stat) of object (dir or file).
+
+    On Windows, ``other_sid`` is the account whose access counts as "other"
+    (default: Users), as in :func:`set_mode`. It is ignored on other platforms.
+    """
     path = _fspath(path)
     if IS_WINDOWS:
-        return win_get_permissions(path)
+        return win_get_permissions(path, other_sid)
     return os.stat(path).st_mode & _PERM_MASK
 
 
-def get_full_mode(path: PathType) -> int:
+def get_full_mode(path: PathType, other_sid: Any = None) -> int:
     """Get mode including set-user-ID, set-group-ID, and sticky bits (up to 0o7777).
 
     Same as :func:`get_mode` on Windows, which has no equivalent of these bits.
     """
     path = _fspath(path)
     if IS_WINDOWS:
-        return win_get_permissions(path)
+        return win_get_permissions(path, other_sid)
     return os.stat(path).st_mode & _FULL_MASK
 
 
@@ -271,7 +280,7 @@ def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
     It is ignored on other platforms.
     """
     path = _fspath(path)
-    new_mode = _resolve_mode(path, mode)
+    new_mode = _resolve_mode(path, mode, other_sid)
 
     if IS_WINDOWS:
         win_set_permissions(path, new_mode, other_sid)
@@ -279,9 +288,9 @@ def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
     os.chmod(path, new_mode)
 
 
-def _resolve_mode(path: str, mode: ModeType) -> int:
+def _resolve_mode(path: str, mode: ModeType, other_sid: Any = None) -> int:
     """Convert int, octal-string, or symbolic mode into an int mode for path."""
-    return _resolve_mode_with(mode, lambda: get_full_mode(path))
+    return _resolve_mode_with(mode, lambda: get_full_mode(path, other_sid))
 
 
 def _resolve_mode_with(mode: ModeType, current_mode: Callable[[], int]) -> int:
@@ -348,8 +357,8 @@ class _PathObj:
         self.path = path
         self.type = obj_type
 
-    def get_full_mode(self) -> int:
-        return get_full_mode(self.path)
+    def get_full_mode(self, other_sid: Any = None) -> int:
+        return get_full_mode(self.path, other_sid)
 
     def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
         set_mode(self.path, mode, other_sid)
@@ -380,7 +389,7 @@ class _PosixObj:
         self._name = name
         self._nofollow = nofollow
 
-    def get_full_mode(self) -> int:
+    def get_full_mode(self, other_sid: Any = None) -> int:  # other_sid: Windows only
         if self._fd is not None:
             st = os.fstat(self._fd)
         else:
@@ -511,19 +520,21 @@ class _WinObj:
                 raise _not_followed(self.path, "resolves outside the tree")
         return handle
 
-    def get_full_mode(self) -> int:
+    def get_full_mode(self, other_sid: Any = None) -> int:
         handle = self._open(ntsecuritycon.READ_CONTROL)
         try:
             sec_des = win32security.GetKernelObjectSecurity(handle, _WIN_SECURITY_INFO)
         finally:
             handle.Close()
-        return _win_mode_from_sd(sec_des, self.type)
+        return _win_mode_from_sd(sec_des, self.type, other_sid)
 
     def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
         handle = self._open(ntsecuritycon.READ_CONTROL | ntsecuritycon.WRITE_DAC)
         try:
             sec_des = win32security.GetKernelObjectSecurity(handle, _WIN_SECURITY_INFO)
-            new_mode = _resolve_mode_with(mode, lambda: _win_mode_from_sd(sec_des, self.type))
+            new_mode = _resolve_mode_with(
+                mode, lambda: _win_mode_from_sd(sec_des, self.type, other_sid)
+            )
             _win_update_sd(sec_des, new_mode, self.type, other_sid)
             # Like SetFileSecurity, this doesn't re-propagate inheritance to children.
             win32security.SetKernelObjectSecurity(
@@ -911,7 +922,11 @@ def convert_stat_to_win(mode: int, user_type: int, object_type: int) -> int:
 
 
 def win_get_user_type(sid: Any, sids: list[Any]) -> int:
-    """Given object and SIDs, return user type."""
+    """Given object and SIDs, return user type.
+
+    Kept for backward compatibility. Mode reading no longer uses this, because it
+    treats every account other than the owner and group as "other" (#185).
+    """
     if sid == sids[OWNER]:
         return OWNER
 
@@ -936,11 +951,11 @@ def _win_resolve(path: str) -> str:
     return os.path.realpath(path) if _is_link(path) else path
 
 
-def win_get_permissions(path: PathType) -> int:
+def win_get_permissions(path: PathType, other_sid: Any = None) -> int:
     """Get the file or dir permissions (of the target, if path is a link)."""
     path = _win_resolve(_fspath(path))
 
-    return _win_get_permissions(path, get_object_type(path))
+    return _win_get_permissions(path, get_object_type(path), other_sid)
 
 
 def _get_basic_symbol_to_mode(symbol: str) -> int:
@@ -948,30 +963,92 @@ def _get_basic_symbol_to_mode(symbol: str) -> int:
     return (4 if "r" in symbol else 0) | (2 if "w" in symbol else 0) | (1 if "x" in symbol else 0)
 
 
-def _win_get_permissions(path: str, object_type: int) -> int:
+def _win_get_permissions(path: str, object_type: int, other_sid: Any = None) -> int:
     """Get the permissions."""
     sec_des = win32security.GetNamedSecurityInfo(
         path, win32security.SE_FILE_OBJECT, _WIN_SECURITY_INFO
     )
-    return _win_mode_from_sd(sec_des, object_type)
+    return _win_mode_from_sd(sec_des, object_type, other_sid)
 
 
-def _win_mode_from_sd(sec_des: Any, object_type: int) -> int:
-    """Compute a mode from a security descriptor with owner, group, and DACL."""
+def _win_roles(sec_des: Any, other_sid: Any = None) -> list[tuple[int, Any]]:
+    """(user type, SID) pairs, one per distinct SID, in POSIX precedence order.
+
+    A SID that is both owner and group is the owner only, and a group SID that is
+    also the "other" SID is the group only, just as POSIX applies only the first
+    matching class (#189).
+    """
+    roles: list[tuple[int, Any]] = []
+    candidates = (
+        (OWNER, sec_des.GetSecurityDescriptorOwner()),
+        (GROUP, sec_des.GetSecurityDescriptorGroup()),
+        (OTHER, win_get_other_sid(other_sid)),
+    )
+    for user_type, sid in candidates:
+        if sid is not None and all(sid != seen for _, seen in roles):
+            roles.append((user_type, sid))
+    return roles
+
+
+def _win_ace(dacl: Any, index: int) -> tuple[int, int, int, Any] | None:
+    """Return (type, flags, mask, SID) for an ACE, or None if pywin32 can't read it.
+
+    pywin32 returns ((type, flags), mask, sid) for standard ACEs, but
+    ((type, flags), mask, object_type, inherited_object_type, sid) for object
+    ACEs, and raises NotImplementedError for others (e.g., callback ACEs).
+    """
+    try:
+        ace = dacl.GetAce(index)
+    except NotImplementedError:
+        return None
+    (ace_type, ace_flags), mask = ace[0], ace[1]
+    return ace_type, ace_flags, mask, ace[-1]
+
+
+def _win_broader_sids(other: Any) -> list[Any]:
+    """SIDs whose access also counts as access for the "other" SID."""
+    broader = _BROADER_THAN.get(win32security.ConvertSidToStringSid(other), _BROADER_THAN_ANY)
+    return [win32security.ConvertStringSidToSid(s) for s in broader]
+
+
+def _win_mode_from_sd(sec_des: Any, object_type: int, other_sid: Any = None) -> int:
+    """Compute a mode from a security descriptor with owner, group, and DACL.
+
+    Only ACEs for the owner, the group, the "other" SID, and groups that include
+    all of "other" (see _BROADER_THAN) count. ACEs for other accounts, such as
+    Administrators, are ignored: counting them as "other" would make the next
+    symbolic change grant their access to everyone in "other" (#185).
+    """
     dacl = sec_des.GetSecurityDescriptorDacl()
-    sids = [
-        sec_des.GetSecurityDescriptorOwner(),
-        sec_des.GetSecurityDescriptorGroup(),
-        win_get_other_sid(),
-    ]
-    system_sid = _win_system_sid()
+    if dacl is None:  # NULL DACL: everyone has full access
+        return _PERM_MASK
+    roles = _win_roles(sec_des, other_sid)
+    other = win_get_other_sid(other_sid)
+    broader = _win_broader_sids(other)
+    # Broader groups' access belongs to whichever role holds the "other" SID:
+    # OTHER, or GROUP/OWNER when that SID also fills an earlier role (e.g., the
+    # primary group is Users). Otherwise it would read as "o" bits that the
+    # writer never stores, and an unrelated change would drop that access.
+    other_role = next(t for t, role_sid in roles if role_sid == other)
     mode = 0
 
     for index in range(dacl.GetAceCount()):
-        ace = dacl.GetAce(index)
-        # Not handling win32security.ACCESS_DENIED_ACE_TYPE
-        if ace[0][0] == win32security.ACCESS_ALLOWED_ACE_TYPE and ace[2] != system_sid:
-            mode = mode | convert_win_to_stat(ace[1], win_get_user_type(ace[2], sids), object_type)
+        ace = _win_ace(dacl, index)
+        if ace is None:
+            continue
+        ace_type, ace_flags, mask, sid = ace
+        # Only plain allow ACEs count (deny and object ACEs aren't handled);
+        # inherit-only ACEs apply to children, not this object.
+        if (
+            ace_type != win32security.ACCESS_ALLOWED_ACE_TYPE
+            or ace_flags & ntsecuritycon.INHERIT_ONLY_ACE
+        ):
+            continue
+        user_type = next((t for t, role_sid in roles if role_sid == sid), None)
+        if user_type is None and sid in broader:
+            user_type = other_role
+        if user_type is not None:
+            mode |= convert_win_to_stat(mask, user_type, object_type)
 
     return mode
 
@@ -1002,28 +1079,38 @@ def _win_update_sd(sec_des: Any, mode: int, object_type: int, other_sid: Any = N
     # the parent folder's permissions. NO_INHERITANCE on each ACE only means it
     # does not propagate to this object's children.
     dacl = sec_des.GetSecurityDescriptorDacl()
+    if dacl is None:
+        dacl = win32security.ACL()
     system_sid = _win_system_sid()
-    sids = [
-        sec_des.GetSecurityDescriptorOwner(),
-        sec_des.GetSecurityDescriptorGroup(),
-        win_get_other_sid(other_sid),
-    ]
     if other_sid is not None:
-        _win_check_other_sid(sids, system_sid)
-
-    system_ace = None
-    for _ in range(dacl.GetAceCount()):
-        ace = dacl.GetAce(0)
-        if ace[2] == system_sid:
-            system_ace = ace
-        dacl.DeleteAce(0)
-
-    if system_ace:
-        dacl.AddAccessAllowedAceEx(
-            dacl.GetAclRevision(), win32security.NO_INHERITANCE, system_ace[1], system_ace[2]
+        _win_check_other_sid(
+            [
+                sec_des.GetSecurityDescriptorOwner(),
+                sec_des.GetSecurityDescriptorGroup(),
+                win_get_other_sid(other_sid),
+            ],
+            system_sid,
         )
 
-    for user_type, sid in enumerate(sids):
+    # Keep SYSTEM's access (plain allow ACEs only; never turn a deny into an allow).
+    system_mask = 0
+    for _ in range(dacl.GetAceCount()):
+        ace = _win_ace(dacl, 0)
+        if (
+            ace is not None
+            and ace[0] == win32security.ACCESS_ALLOWED_ACE_TYPE
+            and not ace[1] & ntsecuritycon.INHERIT_ONLY_ACE
+            and ace[3] == system_sid
+        ):
+            system_mask |= ace[2]
+        dacl.DeleteAce(0)
+
+    if system_mask:
+        dacl.AddAccessAllowedAceEx(
+            dacl.GetAclRevision(), win32security.NO_INHERITANCE, system_mask, system_sid
+        )
+
+    for user_type, sid in _win_roles(sec_des, other_sid):
         win_perm = convert_stat_to_win(mode, user_type, object_type)
 
         if win_perm > 0:
@@ -1131,14 +1218,18 @@ def _print_win_obj_info(path: str) -> None:
         return
 
     for ace_no in range(dacl.GetAceCount()):
-        ace = dacl.GetAce(ace_no)
         print("ACE", ace_no)
+        ace = _win_ace(dacl, ace_no)
+        if ace is None:
+            print("  (ACE type not supported by pywin32)")
+            continue
+        ace_type, ace_flags, mask, sid = ace
 
-        print("  -SID:", _win_sid_display(ace[2]))
+        print("  -SID:", _win_sid_display(sid))
 
-        print_win_ace_type(ace[0][0])
-        print_win_inheritance(ace[0][1])
-        print_win_permissions(ace[1], ace[0][1], get_object_type(path))
+        print_win_ace_type(ace_type)
+        print_win_inheritance(ace_flags)
+        print_win_permissions(mask, ace_flags, get_object_type(path))
 
 
 def perm_test(mode: int = stat.S_IRUSR | stat.S_IWUSR) -> None:
