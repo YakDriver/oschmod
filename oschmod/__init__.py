@@ -46,6 +46,19 @@ PathType = str | os.PathLike[str]
 ModeType = int | str
 """Accepted mode input: an int (e.g., 0o755), octal string ("755"), or symbolic ("u+x")."""
 
+
+class ModeError(ValueError, AttributeError):
+    """Invalid mode string, e.g. ``"u+q"`` or ``"9"``.
+
+    Also an ``AttributeError``, which earlier versions raised for invalid
+    symbolic modes, so existing ``except AttributeError`` code keeps working.
+    """
+
+
+class _ModeTypeError(TypeError, AttributeError):
+    """Non-string symbolic mode; an ``AttributeError`` for backward compatibility."""
+
+
 IS_WINDOWS: Final = platform.system() == "Windows"
 HAS_PYWIN32 = False
 try:
@@ -290,23 +303,53 @@ def set_mode(path: PathType, mode: ModeType, other_sid: Any = None) -> None:
 
 def _resolve_mode(path: str, mode: ModeType, other_sid: Any = None) -> int:
     """Convert int, octal-string, or symbolic mode into an int mode for path."""
-    return _resolve_mode_with(mode, lambda: get_full_mode(path, other_sid))
+    return _resolve_mode_with(
+        mode, lambda: get_full_mode(path, other_sid), lambda: os.path.isdir(path)
+    )
 
 
-def _resolve_mode_with(mode: ModeType, current_mode: Callable[[], int]) -> int:
-    """Like :func:`_resolve_mode`; ``current_mode()`` is called only for symbolic modes."""
+def _resolve_mode_with(
+    mode: ModeType, current_mode: Callable[[], int], is_dir: Callable[[], bool]
+) -> int:
+    """Like :func:`_resolve_mode`; the callables are used only for symbolic modes."""
     if isinstance(mode, bool) or not isinstance(mode, int | str):
         raise TypeError(f"mode must be int or str, not {type(mode).__name__}")
     if isinstance(mode, str):
         if "+" in mode or "-" in mode or "=" in mode:
-            # Symbolic modifiers change only rwx bits; keep any special bits as-is
-            # instead of silently clearing them.
             current = current_mode()
-            return get_effective_mode(current & _PERM_MASK, mode) | (current & _SPECIAL_MASK)
-        mode = int(mode, 8)
+            perms = get_effective_mode(current & _PERM_MASK, mode)
+            special = _special_bits_after(current & _SPECIAL_MASK, mode, is_dir())
+            return perms | special
+        try:
+            mode = int(mode, 8)
+        except ValueError:
+            raise ModeError(f"invalid mode {mode!r}") from None
     if not 0 <= mode <= 0o7777:
         raise ValueError(f"mode {mode:#o} is out of range (0 to 0o7777)")
     return mode
+
+
+def _special_bits_after(special: int, symbolic: str, is_dir: bool) -> int:
+    """Set-user-ID, set-group-ID, and sticky bits after a symbolic mode, as in GNU chmod.
+
+    ``+`` and ``-`` (with ``rwx``) leave them alone. ``=`` clears the bits of the
+    classes it sets: ``u`` clears set-user-ID and ``g`` set-group-ID, except on
+    directories, which keep them; ``o`` clears the sticky bit (#188).
+    """
+    for clause in symbolic.split(","):
+        match = _SYMBOLIC_RE.match(clause)
+        if match is None or match.group(2) != "=":
+            continue
+        whom = match.group(1) or "ugo"
+        if "a" in whom:
+            whom = "ugo"
+        if "u" in whom and not is_dir:
+            special &= ~stat.S_ISUID
+        if "g" in whom and not is_dir:
+            special &= ~stat.S_ISGID
+        if "o" in whom:
+            special &= ~stat.S_ISVTX
+    return special
 
 
 class SidConflictError(ValueError):
@@ -399,7 +442,7 @@ class _PosixObj:
         return st.st_mode & _FULL_MASK
 
     def set_mode(self, mode: ModeType, other_sid: Any = None) -> None:
-        new_mode = _resolve_mode_with(mode, self.get_full_mode)
+        new_mode = _resolve_mode_with(mode, self.get_full_mode, lambda: self.type == DIRECTORY)
         if self._fd is not None:
             os.chmod(self._fd, new_mode)
         elif not self._nofollow:
@@ -533,7 +576,9 @@ class _WinObj:
         try:
             sec_des = win32security.GetKernelObjectSecurity(handle, _WIN_SECURITY_INFO)
             new_mode = _resolve_mode_with(
-                mode, lambda: _win_mode_from_sd(sec_des, self.type, other_sid)
+                mode,
+                lambda: _win_mode_from_sd(sec_des, self.type, other_sid),
+                lambda: self.type == DIRECTORY,
             )
             _win_update_sd(sec_des, new_mode, self.type, other_sid)
             # Like SetFileSecurity, this doesn't re-propagate inheritance to children.
@@ -781,17 +826,25 @@ def _get_effective_mode_multiple(current_mode: int, modes: str) -> int:
     return new_mode
 
 
+_SYMBOLIC_RE: Final = re.compile(r"^\s*([ugoa]*)([-+=])([rwx]*)\s*$")
+
+
 def get_effective_mode(current_mode: int, symbolic: str) -> int:
-    """Get octal mode, given current mode and symbolic mode modifier."""
+    """Get octal mode, given current mode and symbolic mode modifier.
+
+    Raises :class:`ModeError` (a ``ValueError``) for invalid syntax and
+    ``TypeError`` if ``symbolic`` isn't a string. Both are also
+    ``AttributeError``, which earlier versions raised.
+    """
     if not isinstance(symbolic, str):
-        raise AttributeError("symbolic must be a string")
+        raise _ModeTypeError(f"symbolic must be a string, not {type(symbolic).__name__}")
 
     if "," in symbolic:
         return _get_effective_mode_multiple(current_mode, symbolic)
 
-    result = re.search(r"^\s*([ugoa]*)([-+=])([rwx]*)\s*$", symbolic)
+    result = _SYMBOLIC_RE.match(symbolic)
     if result is None:
-        raise AttributeError("bad format of symbolic representation modifier")
+        raise ModeError(f"invalid mode modifier {symbolic!r}")
 
     whom = result.group(1) or "ugo"
     operation = result.group(2)
@@ -836,19 +889,36 @@ def get_object_type(path: PathType) -> int:
 
 
 def get_owner(path: PathType) -> Any:
-    """Get the object owner."""
+    """Get the object owner.
+
+    On Windows, returns ``(name, domain, type)`` from ``LookupAccountSid``. If the
+    account can't be looked up (e.g., a domain account while the domain
+    controller is unreachable), returns ``(sid_string, "", SidTypeUnknown)``.
+    """
     path = _fspath(path)
     if IS_WINDOWS:
-        return win32security.LookupAccountSid(None, win_get_owner_sid(path))
+        return _win_lookup_account(win_get_owner_sid(path))
     return pwd.getpwuid(os.stat(path).st_uid).pw_name
 
 
 def get_group(path: PathType) -> Any:
-    """Get the object group."""
+    """Get the object group. On Windows, see :func:`get_owner` for the result."""
     path = _fspath(path)
     if IS_WINDOWS:
-        return win32security.LookupAccountSid(None, win_get_group_sid(path))
+        return _win_lookup_account(win_get_group_sid(path))
     return grp.getgrgid(os.stat(path).st_gid).gr_name
+
+
+_SID_TYPE_UNKNOWN: Final = 8  # SID_NAME_USE SidTypeUnknown
+
+
+def _win_lookup_account(sid: Any) -> tuple[str, str, int]:
+    """LookupAccountSid, or the string SID if lookup fails (offline, deleted account; #190)."""
+    try:
+        name, domain, sid_type = win32security.LookupAccountSid(None, sid)
+    except pywinerror:
+        return win32security.ConvertSidToStringSid(sid), "", _SID_TYPE_UNKNOWN
+    return name, domain, sid_type
 
 
 def win_get_owner_sid(path: PathType) -> Any:

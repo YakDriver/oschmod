@@ -202,7 +202,9 @@ oschmod.set_mode("myfile1", "u+x")
 oschmod.set_mode("myfile2", 0o777)
 ```
 
-`get_mode()` returns only the read/write/execute bits (`0o777`). On macOS and Linux, use `get_full_mode()` to also include set-user-ID, set-group-ID, and sticky bits (`0o7777`). Symbolic modes such as `g+w` change only read/write/execute bits and leave those special bits as they are.
+`get_mode()` returns only the read/write/execute bits (`0o777`). On macOS and Linux, use `get_full_mode()` to also include set-user-ID, set-group-ID, and sticky bits (`0o7777`). Symbolic `+` and `-` (e.g., `g+w`) leave those special bits as they are. As in GNU chmod, `=` clears them for the classes it sets: `u=` clears set-user-ID, `g=` set-group-ID, and `o=` the sticky bit. Directories keep their set-user-ID and set-group-ID bits.
+
+An invalid mode string raises `oschmod.ModeError`, a `ValueError`.
 
 `set_mode_recursive()` skips symlinks below the path by default. Pass `follow_symlinks=True` to follow them. Errors stop the walk unless you pass `on_error`, which is called with the path and exception for each failure:
 

@@ -227,3 +227,21 @@ def test_recursive_writes_protected_dacl(tmp_path):
         sec = win32security.GetFileSecurity(str(obj), win32security.DACL_SECURITY_INFORMATION)
         control, _ = sec.GetSecurityDescriptorControl()
         assert control & win32security.SE_DACL_PROTECTED
+
+
+def test_get_owner_and_group_offline(file_path, monkeypatch):
+    """Issue #190: fall back to the string SID when LookupAccountSid fails."""
+    import pywintypes  # noqa: PLC0415
+    import win32security  # noqa: PLC0415
+
+    owner_sid = win32security.ConvertSidToStringSid(oschmod.win_get_owner_sid(file_path))
+    group_sid = win32security.ConvertSidToStringSid(oschmod.win_get_group_sid(file_path))
+    name, _domain, _type = oschmod.get_owner(file_path)  # online result is a 3-tuple
+    assert name
+
+    def offline(*_args, **_kwargs):
+        raise pywintypes.error(1789, "LookupAccountSid", "The trust relationship failed.")
+
+    monkeypatch.setattr(win32security, "LookupAccountSid", offline)
+    assert oschmod.get_owner(file_path) == (owner_sid, "", win32security.SidTypeUnknown)
+    assert oschmod.get_group(file_path) == (group_sid, "", win32security.SidTypeUnknown)
