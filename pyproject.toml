@@ -111,7 +111,7 @@ module = ["win32security", "ntsecuritycon", "pywintypes", "win32file"]
 ignore_missing_imports = true
 
 [tool.bumpversion]
-current_version = "0.4.0"
+current_version = "0.5.0"
 commit = false
 tag = false
 
