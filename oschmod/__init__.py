@@ -41,7 +41,7 @@ import sys
 from collections.abc import Callable
 from typing import IO, Any, Final
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 PathType = str | os.PathLike[str]
 """Accepted path input: a string or any path-like object."""
