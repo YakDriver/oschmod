@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -37,9 +37,9 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "bump-my-version==1.6.7",
-    "mypy==2.4.0",
-    "pytest==9.1.1",
+    "bump-my-version==1.8.1",
+    "mypy==2.4.1",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "ruff==0.17.3",
 ]
